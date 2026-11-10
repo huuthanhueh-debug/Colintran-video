@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14110f">
+<title>PromptGate Video</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>PromptGate <span>Video</span></h1>
+  <p id="summary" class="muted"></p>
+</header>
+
+<main>
+  <section id="tab-brief" class="tab">
+    <label for="brief">Ý tưởng video <span class="muted">(mỗi câu hoặc mỗi dòng là một cảnh)</span></label>
+    <textarea id="brief" rows="8" placeholder="Ví dụ:&#10;Bình minh trên bãi biển Vũng Tàu, sóng nhẹ.&#10;Lễ tân mỉm cười chào khách ở sảnh khách sạn.&#10;Căn suite hướng biển, rèm mở đón nắng."></textarea>
+    <label for="consistency">Giữ xuyên suốt <span class="muted">(nhân vật, sản phẩm, bối cảnh, không bắt buộc)</span></label>
+    <input id="consistency" type="text" maxlength="300" placeholder="Ví dụ: a beachfront suite hotel in Vung Tau, staff in beige uniforms">
+    <div class="row">
+      <div><label for="aspect">Khung hình</label><select id="aspect"></select></div>
+      <div><label for="total">Tổng thời lượng (giây)</label><input id="total" type="number" min="2" max="600" step="1" value="30"></div>
+      <div><label for="style">Phong cách</label><select id="style"></select></div>
+    </div>
+    <button id="make" class="primary">Tạo storyboard</button>
+    <p class="muted small">Prompt gửi cho công cụ AI nên viết bằng tiếng Anh để ra hình đúng ý. App không dịch: bạn viết thế nào, cảnh giữ nguyên thế ấy.</p>
+  </section>
+
+  <section id="tab-scenes" class="tab" hidden>
+    <div id="scenes"></div>
+    <button id="add-scene">+ Thêm cảnh</button>
+  </section>
+
+  <section id="tab-prompts" class="tab" hidden>
+    <div id="tools" class="chips"></div>
+    <div id="tool-info" class="card"></div>
+    <div id="warnings"></div>
+    <div id="prompts"></div>
+    <button id="copy-all">Sao chép tất cả</button>
+  </section>
+
+  <section id="tab-export" class="tab" hidden>
+    <div class="stage"><canvas id="preview"></canvas></div>
+    <div class="row tight">
+      <button id="play">▶ Xem thử</button>
+      <input id="seek" type="range" min="0" max="1000" value="0" aria-label="Vị trí">
+      <span id="clock" class="muted">0:00</span>
+    </div>
+    <div class="row">
+      <div><label for="quality">Chất lượng</label><select id="quality"><option value="720">720p</option><option value="1080">1080p</option><option value="360">360p (nhẹ)</option></select></div>
+      <div><label for="music">Nhạc nền</label><input id="music" type="file" accept="audio/*"></div>
+      <div><label for="volume">Âm lượng nhạc</label><input id="volume" type="range" min="0" max="100" value="60"></div>
+    </div>
+    <label class="check"><input id="captions" type="checkbox" checked> Hiện phụ đề trên video</label>
+    <label class="check"><input id="clip-audio" type="checkbox" checked> Giữ âm thanh gốc của clip</label>
+    <button id="export" class="primary">Xuất video</button>
+    <progress id="progress" max="1" value="0" hidden></progress>
+    <p id="export-status" class="muted" role="status"></p>
+    <div class="row tight">
+      <button id="save-srt">Lưu phụ đề .srt</button>
+      <button id="save-json">Lưu dự án .json</button>
+      <label class="filebtn">Mở dự án<input id="open-json" type="file" accept="application/json,.json" hidden></label>
+    </div>
+    <p class="muted small">Xuất chạy theo thời gian thực: video 30 giây mất khoảng 30 giây. Giữ app mở trên màn hình trong lúc xuất.</p>
+  </section>
+</main>
+
+<nav id="nav">
+  <button data-tab="brief" class="on">Ý tưởng</button>
+  <button data-tab="scenes">Cảnh</button>
+  <button data-tab="prompts">Prompt</button>
+  <button data-tab="export">Xuất</button>
+</nav>
+<div id="toast" role="status" hidden></div>
+
+<script src="core.js"></script>
+<script src="render.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
