@@ -2,6 +2,8 @@
 
 App dựng video chạy hoàn toàn trên máy: nhập ý tưởng → storyboard → prompt đúng chuẩn cho 11 công cụ AI video → gắn ảnh/clip đã tạo → xuất video có phụ đề và nhạc. Không tài khoản, không gửi dữ liệu đi đâu.
 
+Giao diện có hai ngôn ngữ: bấm **VI** hoặc **EN** ở góc trên bên phải; lựa chọn được nhớ cho lần mở sau. / The UI is bilingual: tap **VI** or **EN** at the top right.
+
 ## Bốn bước trong app
 
 | Tab | Việc làm |

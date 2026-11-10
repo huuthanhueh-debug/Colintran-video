@@ -8,29 +8,35 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<!-- Visible text is filled in by app.js from its VI/EN dictionary (data-t = text, data-ph = placeholder). -->
 <header>
-  <h1>PromptGate <span>Video</span></h1>
+  <div class="top">
+    <h1>PromptGate <span>Video</span></h1>
+    <div id="lang" class="lang" role="group" aria-label="Language">
+      <button data-lang="vi">VI</button><button data-lang="en">EN</button>
+    </div>
+  </div>
   <p id="summary" class="muted"></p>
 </header>
 
 <main>
   <section id="tab-brief" class="tab">
-    <label for="brief">Ý tưởng video <span class="muted">(mỗi câu hoặc mỗi dòng là một cảnh)</span></label>
-    <textarea id="brief" rows="8" placeholder="Ví dụ:&#10;Bình minh trên bãi biển Vũng Tàu, sóng nhẹ.&#10;Lễ tân mỉm cười chào khách ở sảnh khách sạn.&#10;Căn suite hướng biển, rèm mở đón nắng."></textarea>
-    <label for="consistency">Giữ xuyên suốt <span class="muted">(nhân vật, sản phẩm, bối cảnh, không bắt buộc)</span></label>
-    <input id="consistency" type="text" maxlength="300" placeholder="Ví dụ: a beachfront suite hotel in Vung Tau, staff in beige uniforms">
+    <label for="brief"><span data-t="brief.label"></span> <span class="muted" data-t="brief.hint"></span></label>
+    <textarea id="brief" rows="8" data-ph="brief.ph"></textarea>
+    <label for="consistency"><span data-t="keep.label"></span> <span class="muted" data-t="keep.hint"></span></label>
+    <input id="consistency" type="text" maxlength="300" data-ph="keep.ph">
     <div class="row">
-      <div><label for="aspect">Khung hình</label><select id="aspect"></select></div>
-      <div><label for="total">Tổng thời lượng (giây)</label><input id="total" type="number" min="2" max="600" step="1" value="30"></div>
-      <div><label for="style">Phong cách</label><select id="style"></select></div>
+      <div><label for="aspect" data-t="aspect"></label><select id="aspect"></select></div>
+      <div><label for="total" data-t="total"></label><input id="total" type="number" min="2" max="600" step="1" value="30"></div>
+      <div><label for="style" data-t="style"></label><select id="style"></select></div>
     </div>
-    <button id="make" class="primary">Tạo storyboard</button>
-    <p class="muted small">Prompt gửi cho công cụ AI nên viết bằng tiếng Anh để ra hình đúng ý. App không dịch: bạn viết thế nào, cảnh giữ nguyên thế ấy.</p>
+    <button id="make" class="primary" data-t="make"></button>
+    <p class="muted small" data-t="brief.note"></p>
   </section>
 
   <section id="tab-scenes" class="tab" hidden>
     <div id="scenes"></div>
-    <button id="add-scene">+ Thêm cảnh</button>
+    <button id="add-scene" data-t="scene.add"></button>
   </section>
 
   <section id="tab-prompts" class="tab" hidden>
@@ -38,45 +44,46 @@
     <div id="tool-info" class="card"></div>
     <div id="warnings"></div>
     <div id="prompts"></div>
-    <button id="copy-all">Sao chép tất cả</button>
+    <button id="copy-all" data-t="copy.all"></button>
   </section>
 
   <section id="tab-export" class="tab" hidden>
     <div class="stage"><canvas id="preview"></canvas></div>
     <div class="row tight">
-      <button id="play">▶ Xem thử</button>
-      <input id="seek" type="range" min="0" max="1000" value="0" aria-label="Vị trí">
+      <button id="play"></button>
+      <input id="seek" type="range" min="0" max="1000" value="0">
       <span id="clock" class="muted">0:00</span>
     </div>
     <div class="row">
-      <div><label for="quality">Chất lượng</label><select id="quality"><option value="720">720p</option><option value="1080">1080p</option><option value="360">360p (nhẹ)</option></select></div>
-      <div><label for="music">Nhạc nền</label><input id="music" type="file" accept="audio/*"></div>
-      <div><label for="volume">Âm lượng nhạc</label><input id="volume" type="range" min="0" max="100" value="60"></div>
+      <div><label for="quality" data-t="quality"></label><select id="quality"></select></div>
+      <div><label for="music" data-t="music"></label><input id="music" type="file" accept="audio/*"></div>
+      <div><label for="volume" data-t="volume"></label><input id="volume" type="range" min="0" max="100" value="60"></div>
     </div>
-    <label class="check"><input id="captions" type="checkbox" checked> Hiện phụ đề trên video</label>
-    <label class="check"><input id="clip-audio" type="checkbox" checked> Giữ âm thanh gốc của clip</label>
-    <button id="export" class="primary">Xuất video</button>
+    <label class="check"><input id="captions" type="checkbox" checked> <span data-t="captions"></span></label>
+    <label class="check"><input id="clip-audio" type="checkbox" checked> <span data-t="clipAudio"></span></label>
+    <button id="export" class="primary"></button>
     <progress id="progress" max="1" value="0" hidden></progress>
     <p id="export-status" class="muted" role="status"></p>
     <div class="row tight">
-      <button id="save-srt">Lưu phụ đề .srt</button>
-      <button id="save-json">Lưu dự án .json</button>
-      <label class="filebtn">Mở dự án<input id="open-json" type="file" accept="application/json,.json" hidden></label>
+      <button id="save-srt" data-t="save.srt"></button>
+      <button id="save-json" data-t="save.json"></button>
+      <label class="filebtn"><span data-t="open.json"></span><input id="open-json" type="file" accept="application/json,.json" hidden></label>
     </div>
-    <p class="muted small">Xuất chạy theo thời gian thực: video 30 giây mất khoảng 30 giây. Giữ app mở trên màn hình trong lúc xuất.</p>
+    <p class="muted small" data-t="export.note"></p>
   </section>
 </main>
 
 <nav id="nav">
-  <button data-tab="brief" class="on">Ý tưởng</button>
-  <button data-tab="scenes">Cảnh</button>
-  <button data-tab="prompts">Prompt</button>
-  <button data-tab="export">Xuất</button>
+  <button data-tab="brief" class="on" data-t="tab.brief"></button>
+  <button data-tab="scenes" data-t="tab.scenes"></button>
+  <button data-tab="prompts" data-t="tab.prompts"></button>
+  <button data-tab="export" data-t="tab.export"></button>
 </nav>
 <div id="toast" role="status" hidden></div>
 
 <script src="core.js"></script>
 <script src="render.js"></script>
+<script src="i18n.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

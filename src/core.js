@@ -17,76 +17,78 @@
   // `range` = any length between two bounds. `order` = recommended order of prompt elements.
   const TOOLS = [
     { id: 'veo', name: 'Google Veo 3', version: 'Veo 3.1', category: 'generative', clips: [4, 6, 8], aspects: ['16:9', '9:16'], audio: true,
-      inputs: 'text, ảnh, khung đầu + cuối, ảnh tham chiếu', order: ['camera', 'subject', 'context', 'style', 'audio'],
-      tips: ['Mở đầu bằng góc máy và chuyển động máy, rồi mới tới chủ thể và hành động.', 'Có âm thanh gốc: mô tả tiếng động, nhạc nền; lời thoại đặt trong ngoặc kép.'],
+      inputs: { vi: 'text, ảnh, khung đầu + cuối, ảnh tham chiếu', en: 'text, image, first + last frame, reference images' }, order: ['camera', 'subject', 'context', 'style', 'audio'],
+      tips: { vi: ['Mở đầu bằng góc máy và chuyển động máy, rồi mới tới chủ thể và hành động.', 'Có âm thanh gốc: mô tả tiếng động, nhạc nền; lời thoại đặt trong ngoặc kép.'], en: ['Open with the shot size and camera move, then the subject and action.', 'Native audio: describe sound effects and music; put dialogue in quotes.'] },
       url: 'https://cloud.google.com/blog/products/ai-machine-learning/ultimate-prompting-guide-for-veo-3-1' },
     { id: 'runway', name: 'Runway Gen-4', version: 'Gen-4.5', category: 'generative', clips: [5, 10], aspects: ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'], audio: true,
-      inputs: 'text, ảnh', order: ['subject', 'camera', 'context', 'style'],
-      tips: ['Tả cả hình ảnh lẫn chuyển động; câu khẳng định, ngắn, không dùng câu phủ định.', 'Mạnh nhất khi có ảnh đầu vào: prompt chỉ cần tả chuyển động.'],
+      inputs: { vi: 'text, ảnh', en: 'text, image' }, order: ['subject', 'camera', 'context', 'style'],
+      tips: { vi: ['Tả cả hình ảnh lẫn chuyển động; câu khẳng định, ngắn, không dùng câu phủ định.', 'Mạnh nhất khi có ảnh đầu vào: prompt chỉ cần tả chuyển động.'], en: ['Describe both the picture and the motion; short positive sentences, no negatives.', 'Strongest with an input image: the prompt then only needs the motion.'] },
       url: 'https://help.runwayml.com/hc/en-us/articles/46974685288467' },
     { id: 'kling', name: 'Kling AI', version: 'Kling 4.0', category: 'generative', range: [3, 30], aspects: ['16:9', '9:16', '1:1', '21:9'], audio: true,
-      inputs: 'text, khung đầu + cuối, keyframe, ảnh tham chiếu', order: ['subject', 'context', 'camera', 'style', 'audio'],
-      tips: ['Không có công thức cứng: nêu đủ chủ thể, hành động, bối cảnh, máy quay, ánh sáng, không khí.', 'Gọi tên cỡ cảnh và chuyển động máy; lời thoại ghi rõ ai nói.'],
+      inputs: { vi: 'text, khung đầu + cuối, keyframe, ảnh tham chiếu', en: 'text, first + last frame, keyframes, reference images' }, order: ['subject', 'context', 'camera', 'style', 'audio'],
+      tips: { vi: ['Không có công thức cứng: nêu đủ chủ thể, hành động, bối cảnh, máy quay, ánh sáng, không khí.', 'Gọi tên cỡ cảnh và chuyển động máy; lời thoại ghi rõ ai nói.'], en: ['No fixed formula: cover subject, action, setting, camera, lighting and atmosphere.', 'Name the framing and the camera move; label who speaks each line.'] },
       url: 'https://kling.ai/blog/kling-ai-prompt-guide' },
     { id: 'heygen', name: 'HeyGen', version: 'Avatar V', category: 'avatar', aspects: ['16:9', '9:16', '1:1', '4:5', '5:4'], audio: true,
-      inputs: 'kịch bản, ảnh hoặc video mẫu, audio', order: [],
-      tips: ['Viết lời thoại như nói: câu ngắn, mỗi cảnh một ý.', 'Chèn nhịp nghỉ ngắn giữa các ý để avatar không nói dồn.'],
+      inputs: { vi: 'kịch bản, ảnh hoặc video mẫu, audio', en: 'script, photo or sample video, audio' }, order: [],
+      tips: { vi: ['Viết lời thoại như nói: câu ngắn, mỗi cảnh một ý.', 'Chèn nhịp nghỉ ngắn giữa các ý để avatar không nói dồn.'], en: ['Write the script as speech: short sentences, one idea per scene.', 'Add short pauses between ideas so the avatar does not rush.'] },
       url: 'https://help.heygen.com/en/articles/11269603-heygen-avatar-iv-complete-guide' },
     { id: 'synthesia', name: 'Synthesia', version: 'Express-2', category: 'avatar', aspects: ['16:9'], audio: true,
-      inputs: 'kịch bản', order: [],
-      tips: ['Mỗi cảnh một đoạn lời thoại, kèm chữ trên màn hình ngắn gọn.', 'Hợp video đào tạo, SOP, thông báo nội bộ.'],
+      inputs: { vi: 'kịch bản', en: 'script' }, order: [],
+      tips: { vi: ['Mỗi cảnh một đoạn lời thoại, kèm chữ trên màn hình ngắn gọn.', 'Hợp video đào tạo, SOP, thông báo nội bộ.'], en: ['One block of script per scene, with brief on-screen text.', 'Good for training, SOP and internal announcement videos.'] },
       url: 'https://help.synthesia.io/en/articles/8368969-video-faqs' },
     { id: 'invideo', name: 'InVideo AI', version: '', category: 'editor', aspects: ['16:9', '9:16', '1:1'], audio: true,
-      inputs: 'prompt hoặc kịch bản', order: [],
-      tips: ['Một prompt cho cả video: chủ đề, độ dài, ngang/dọc, có voiceover và phụ đề hay không.', 'Chọn đúng workflow (shorts, explainer, script-to-video).'],
+      inputs: { vi: 'prompt hoặc kịch bản', en: 'prompt or script' }, order: [],
+      tips: { vi: ['Một prompt cho cả video: chủ đề, độ dài, ngang/dọc, có voiceover và phụ đề hay không.', 'Chọn đúng workflow (shorts, explainer, script-to-video).'], en: ['One prompt for the whole video: topic, length, landscape or portrait, voiceover and subtitles or not.', 'Pick the right workflow (shorts, explainer, script-to-video).'] },
       url: 'https://help-ai.invideo.io/what-is-magic-box-and-how-to-use-it/' },
     { id: 'capcut', name: 'CapCut AI', version: 'AI video maker', category: 'editor', aspects: ['9:16', '16:9'], audio: true,
-      inputs: 'kịch bản hoặc prompt', order: [],
-      tips: ['Thứ tự: hướng cảnh → các hành động theo trình tự → trạng thái kết thúc → tỉ lệ + thời lượng.', 'Chọn tỉ lệ, giọng đọc và thời lượng trước khi bấm tạo.'],
+      inputs: { vi: 'kịch bản hoặc prompt', en: 'script or prompt' }, order: [],
+      tips: { vi: ['Thứ tự: hướng cảnh → các hành động theo trình tự → trạng thái kết thúc → tỉ lệ + thời lượng.', 'Chọn tỉ lệ, giọng đọc và thời lượng trước khi bấm tạo.'], en: ['Order: scene direction → actions in sequence → final state → aspect + duration.', 'Set aspect, voice and duration before you generate.'] },
       url: 'https://www.capcut.com/create/ai-video-generator/capcut-script-to-video-guide' },
     { id: 'canva', name: 'Canva AI (Magic Media)', version: 'Create a Video Clip (Veo 3)', category: 'generative', clips: [8], aspects: ['16:9'], audio: true,
-      inputs: 'text', order: ['camera', 'subject', 'context', 'style', 'audio'],
-      tips: ['Chạy trên Veo 3: dùng cùng cấu trúc prompt với Veo.', 'Chỉ 16:9, tối đa 8 giây, có giới hạn lượt mỗi tháng.'],
+      inputs: { vi: 'text', en: 'text' }, order: ['camera', 'subject', 'context', 'style', 'audio'],
+      tips: { vi: ['Chạy trên Veo 3: dùng cùng cấu trúc prompt với Veo.', 'Chỉ 16:9, tối đa 8 giây, có giới hạn lượt mỗi tháng.'], en: ['Runs on Veo 3: use the same prompt structure as Veo.', '16:9 only, up to 8 seconds, with a monthly cap.'] },
       url: 'https://www.canva.com/features/ai-video-generator/' },
     { id: 'sora', name: 'Sora (OpenAI)', version: 'Sora 2', category: 'generative', clips: [4, 8, 12], aspects: ['16:9', '9:16'], audio: true, discontinued: true,
-      inputs: 'text, ảnh', order: ['subject', 'context', 'camera', 'style', 'audio'],
-      tips: ['OpenAI đã đóng Sora (app 04/2026, API 09/2026). Prompt vẫn tạo để tham khảo hoặc dùng lại cho Veo/Kling.', 'Tả như một shot list: cỡ cảnh, ống kính, ánh sáng, hành động theo nhịp.'],
+      inputs: { vi: 'text, ảnh', en: 'text, image' }, order: ['subject', 'context', 'camera', 'style', 'audio'],
+      tips: { vi: ['OpenAI đã đóng Sora (app 04/2026, API 09/2026). Prompt vẫn tạo để tham khảo hoặc dùng lại cho Veo/Kling.', 'Tả như một shot list: cỡ cảnh, ống kính, ánh sáng, hành động theo nhịp.'], en: ['OpenAI closed Sora (app 04/2026, API 09/2026). Prompts are still built for reference or reuse in Veo/Kling.', 'Write it like a shot list: framing, lens, lighting, action beat by beat.'] },
       url: 'https://venturebeat.com/technology/openai-is-shutting-down-sora-its-powerful-ai-video-app' },
     { id: 'pika', name: 'Pika Labs', version: 'Pika 2.5', category: 'generative', clips: [5, 10], aspects: ['16:9', '9:16', '1:1', '4:5', '5:4', '3:2', '2:3'], audio: false,
-      inputs: 'text, ảnh, khung đầu + cuối', order: ['subject', 'camera', 'context', 'style'],
-      tips: ['Prompt ngắn, một hành động chính cho mỗi clip.', 'Không có âm thanh gốc: thêm nhạc ở bước Xuất của app này.'],
+      inputs: { vi: 'text, ảnh, khung đầu + cuối', en: 'text, image, first + last frame' }, order: ['subject', 'camera', 'context', 'style'],
+      tips: { vi: ['Prompt ngắn, một hành động chính cho mỗi clip.', 'Không có âm thanh gốc: thêm nhạc ở bước Xuất của app này.'], en: ['Short prompts, one main action per clip.', 'No native audio: add music in the Export step of this app.'] },
       url: 'https://pika.art/faq' },
     { id: 'luma', name: 'Luma Dream Machine', version: 'Ray3.2', category: 'generative', clips: [5, 10], aspects: ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'], audio: false,
-      inputs: 'text, ảnh, keyframe, video (Modify)', order: ['camera', 'subject', 'context', 'style'],
-      tips: ['Phản hồi mạnh với thuật ngữ máy quay, ống kính, ánh sáng chuyên nghiệp.', 'Không có âm thanh gốc: thêm nhạc ở bước Xuất của app này.'],
+      inputs: { vi: 'text, ảnh, keyframe, video (Modify)', en: 'text, image, keyframes, video (Modify)' }, order: ['camera', 'subject', 'context', 'style'],
+      tips: { vi: ['Phản hồi mạnh với thuật ngữ máy quay, ống kính, ánh sáng chuyên nghiệp.', 'Không có âm thanh gốc: thêm nhạc ở bước Xuất của app này.'], en: ['Responds strongly to professional camera, lens and lighting terms.', 'No native audio: add music in the Export step of this app.'] },
       url: 'https://lumalabs.ai/learning-center/articles/luma-video-models-field-guide' },
   ];
 
   const STYLES = {
-    cinematic: { vi: 'Điện ảnh', en: 'cinematic look, shallow depth of field, soft natural light, rich color grade, 35mm film feel', audio: 'subtle ambient sound, gentle orchestral score', colors: ['#0f172a', '#7c3aed'] },
-    commercial: { vi: 'Quảng cáo sản phẩm', en: 'premium commercial look, clean studio lighting, crisp detail, polished color', audio: 'upbeat modern music, crisp product sound design', colors: ['#111827', '#f59e0b'] },
-    hospitality: { vi: 'Khách sạn & du lịch', en: 'luxury travel film look, warm golden-hour light, inviting atmosphere, smooth gimbal movement', audio: 'ocean breeze and soft ambient room tone, relaxed lounge music', colors: ['#0c4a6e', '#f97316'] },
-    documentary: { vi: 'Tài liệu', en: 'documentary style, handheld realism, natural available light, true-to-life color', audio: 'natural location sound, minimal music', colors: ['#1c1917', '#65a30d'] },
-    social: { vi: 'Mạng xã hội', en: 'energetic social video look, bright punchy color, fast dynamic framing', audio: 'trending upbeat track, snappy sound effects', colors: ['#831843', '#06b6d4'] },
-    anime: { vi: 'Hoạt hình anime', en: 'high-quality anime style, clean line art, vivid cel shading, expressive lighting', audio: 'emotive anime soundtrack, stylised sound effects', colors: ['#1e1b4b', '#fb7185'] },
+    cinematic: { name: 'Cinematic', vi: 'Điện ảnh', en: 'cinematic look, shallow depth of field, soft natural light, rich color grade, 35mm film feel', audio: 'subtle ambient sound, gentle orchestral score', colors: ['#0f172a', '#7c3aed'] },
+    commercial: { name: 'Product commercial', vi: 'Quảng cáo sản phẩm', en: 'premium commercial look, clean studio lighting, crisp detail, polished color', audio: 'upbeat modern music, crisp product sound design', colors: ['#111827', '#f59e0b'] },
+    hospitality: { name: 'Hotel & travel', vi: 'Khách sạn & du lịch', en: 'luxury travel film look, warm golden-hour light, inviting atmosphere, smooth gimbal movement', audio: 'ocean breeze and soft ambient room tone, relaxed lounge music', colors: ['#0c4a6e', '#f97316'] },
+    documentary: { name: 'Documentary', vi: 'Tài liệu', en: 'documentary style, handheld realism, natural available light, true-to-life color', audio: 'natural location sound, minimal music', colors: ['#1c1917', '#65a30d'] },
+    social: { name: 'Social media', vi: 'Mạng xã hội', en: 'energetic social video look, bright punchy color, fast dynamic framing', audio: 'trending upbeat track, snappy sound effects', colors: ['#831843', '#06b6d4'] },
+    anime: { name: 'Anime', vi: 'Hoạt hình anime', en: 'high-quality anime style, clean line art, vivid cel shading, expressive lighting', audio: 'emotive anime soundtrack, stylised sound effects', colors: ['#1e1b4b', '#fb7185'] },
   };
 
   const SHOTS = {
-    wide: { vi: 'Toàn cảnh', en: 'Wide establishing shot' },
-    medium: { vi: 'Trung cảnh', en: 'Medium shot' },
-    close: { vi: 'Cận cảnh', en: 'Close-up shot' },
-    detail: { vi: 'Đặc tả', en: 'Extreme close-up detail shot' },
-    aerial: { vi: 'Trên cao', en: 'Aerial drone shot' },
+    wide: { name: 'Wide', vi: 'Toàn cảnh', en: 'Wide establishing shot' },
+    medium: { name: 'Medium', vi: 'Trung cảnh', en: 'Medium shot' },
+    close: { name: 'Close-up', vi: 'Cận cảnh', en: 'Close-up shot' },
+    detail: { name: 'Detail', vi: 'Đặc tả', en: 'Extreme close-up detail shot' },
+    aerial: { name: 'Aerial', vi: 'Trên cao', en: 'Aerial drone shot' },
   };
   const MOTIONS = {
-    'push-in': { vi: 'Tiến vào', en: 'slow push-in' },
-    'pull-out': { vi: 'Lùi ra', en: 'slow pull-out' },
-    'pan-right': { vi: 'Lia phải', en: 'smooth pan right' },
-    'pan-left': { vi: 'Lia trái', en: 'smooth pan left' },
-    'tilt-up': { vi: 'Ngước lên', en: 'gentle tilt up' },
-    static: { vi: 'Máy tĩnh', en: 'locked-off static camera' },
+    'push-in': { name: 'Push in', vi: 'Tiến vào', en: 'slow push-in' },
+    'pull-out': { name: 'Pull out', vi: 'Lùi ra', en: 'slow pull-out' },
+    'pan-right': { name: 'Pan right', vi: 'Lia phải', en: 'smooth pan right' },
+    'pan-left': { name: 'Pan left', vi: 'Lia trái', en: 'smooth pan left' },
+    'tilt-up': { name: 'Tilt up', vi: 'Ngước lên', en: 'gentle tilt up' },
+    static: { name: 'Static', vi: 'Máy tĩnh', en: 'locked-off static camera' },
   };
-  const TRANSITIONS = { fade: 'Mờ dần', cut: 'Cắt thẳng' };
+  const TRANSITIONS = { fade: { name: 'Fade', vi: 'Mờ dần' }, cut: { name: 'Hard cut', vi: 'Cắt thẳng' } };
+  // UI label of a style / shot / motion / transition entry in the chosen language.
+  const label = (entry, lang) => (lang === 'en' ? entry.name : entry.vi);
   const SHOT_CYCLE = ['wide', 'medium', 'close', 'medium', 'detail', 'wide'];
   const MOTION_CYCLE = ['push-in', 'pan-right', 'static', 'pan-left', 'pull-out', 'tilt-up'];
 
@@ -219,7 +221,27 @@
     return t.order.map((k) => sentence(piece[k])).filter(Boolean).join(' ') + ' No subtitles, no on-screen text.';
   }
 
-  function buildPack(toolId, proj) {
+  const MSG = {
+    vi: {
+      scene: 'Cảnh', about: 'khoảng', whole: 'Cả video',
+      gone: (n) => `${n} đã ngừng hoạt động; prompt chỉ để tham khảo.`,
+      aspect: (n, a, b) => `${n} không hỗ trợ ${a}; dùng ${b} rồi crop khi dựng.`,
+      split: (k, n) => `${k} cảnh dài hơn một lần tạo của ${n}: tạo nhiều clip (số lần ghi ở từng cảnh) hoặc rút ngắn cảnh.`,
+      silent: (n) => `${n} không tạo âm thanh: thêm nhạc ở tab Xuất.`,
+      spoken: 'Lời thoại được đọc đúng như bạn viết: soạn bằng ngôn ngữ muốn avatar nói.',
+    },
+    en: {
+      scene: 'Scene', about: 'about', whole: 'Whole video',
+      gone: (n) => `${n} has been shut down; prompts are for reference only.`,
+      aspect: (n, a, b) => `${n} does not support ${a}; use ${b} and crop when editing.`,
+      split: (k, n) => `${k} scene(s) run longer than one ${n} generation: make several clips (count shown on each scene) or shorten the scene.`,
+      silent: (n) => `${n} does not generate audio: add music in the Export tab.`,
+      spoken: 'The script is read exactly as written: write it in the language the avatar should speak.',
+    },
+  };
+
+  function buildPack(toolId, proj, lang) {
+    const m = MSG[lang === 'en' ? 'en' : 'vi'];
     const t = tool(toolId);
     if (!t) throw new Error('Unknown tool: ' + toolId);
     const project = normalizeProject(proj);
@@ -227,8 +249,8 @@
     const total = totalDuration(project);
     const st = STYLES[project.style];
     const warnings = [];
-    if (t.discontinued) warnings.push(t.name + ' đã ngừng hoạt động; prompt chỉ để tham khảo.');
-    if (aspect !== project.aspect) warnings.push(`${t.name} không hỗ trợ ${project.aspect}; dùng ${aspect} rồi crop khi dựng.`);
+    if (t.discontinued) warnings.push(m.gone(t.name));
+    if (aspect !== project.aspect) warnings.push(m.aspect(t.name, project.aspect, aspect));
     if (!project.scenes.length) return { tool: t, mode: t.category === 'editor' ? 'whole' : 'scene', aspect, items: [], warnings };
     const items = [];
     if (t.category === 'generative') {
@@ -236,22 +258,22 @@
       project.scenes.forEach((s, i) => {
         const fit = fitClip(t, s.duration);
         if (fit.count > 1) split++;
-        items.push({ sceneId: s.id, label: `Cảnh ${i + 1} · ${fit.count > 1 ? fit.count + ' × ' : ''}${fit.seconds}s · ${aspect}`, text: scenePrompt(t, s, project), seconds: fit.seconds, count: fit.count });
+        items.push({ sceneId: s.id, label: `${m.scene} ${i + 1} · ${fit.count > 1 ? fit.count + ' × ' : ''}${fit.seconds}s · ${aspect}`, text: scenePrompt(t, s, project), seconds: fit.seconds, count: fit.count });
       });
-      if (split) warnings.push(`${split} cảnh dài hơn một lần tạo của ${t.name}: tạo nhiều clip (số lần ghi ở từng cảnh) hoặc rút ngắn cảnh.`);
-      if (!t.audio) warnings.push(t.name + ' không tạo âm thanh: thêm nhạc ở tab Xuất.');
+      if (split) warnings.push(m.split(split, t.name));
+      if (!t.audio) warnings.push(m.silent(t.name));
     } else if (t.category === 'avatar') {
       project.scenes.forEach((s, i) => items.push({
-        sceneId: s.id, label: `Cảnh ${i + 1} · khoảng ${s.duration}s`, seconds: s.duration, count: 1,
+        sceneId: s.id, label: `${m.scene} ${i + 1} · ${m.about} ${s.duration}s`, seconds: s.duration, count: 1,
         text: `Scene ${i + 1}\nScript: ${sentence(s.text)}\nOn-screen text: ${s.caption}\nAvatar framing: ${SHOTS[s.shot].en.toLowerCase()}, ${aspect}`,
       }));
-      warnings.push('Lời thoại được đọc đúng như bạn viết: soạn bằng ngôn ngữ muốn avatar nói.');
+      warnings.push(m.spoken);
     } else {
       const lines = project.scenes.map((s, i) => `${i + 1}. (${s.duration}s) ${sentence(s.text)}`).join('\n');
       const head = t.id === 'capcut'
         ? `Scene direction: ${st.en}.\nActions in order:\n${lines}\nFinal state: end on the last scene, hold for one second.\nFormat: ${aspect}, about ${Math.round(total)} seconds, voiceover and subtitles on.`
         : `Create a ${Math.round(total)}-second ${aspect} video titled "${project.title}".\nStyle: ${st.en}.\nVoiceover: yes. Subtitles: yes. Background music: ${st.audio}.\nFollow this scene order exactly:\n${lines}`;
-      items.push({ sceneId: null, label: `Cả video · ${Math.round(total)}s · ${aspect}`, text: head + (project.consistency ? `\nKeep consistent: ${project.consistency}.` : ''), seconds: total, count: 1 });
+      items.push({ sceneId: null, label: `${m.whole} · ${Math.round(total)}s · ${aspect}`, text: head + (project.consistency ? `\nKeep consistent: ${project.consistency}.` : ''), seconds: total, count: 1 });
     }
     return { tool: t, mode: t.category === 'editor' ? 'whole' : 'scene', aspect, items, warnings };
   }
@@ -341,7 +363,7 @@
 
   return {
     CHECKED, LIMITS, ASPECTS, FADE, TOOLS, STYLES, SHOTS, MOTIONS, TRANSITIONS, MIMES,
-    tool, splitBrief, caption, distribute, buildStoryboard, normalizeProject, nearestAspect, fitClip,
+    tool, label, splitBrief, caption, distribute, buildStoryboard, normalizeProject, nearestAspect, fitClip,
     buildPack, packText, totalDuration, timeline, sceneAt, motionTransform, dims, wrapLines, pickMime,
     extFor, fileName, toSRT, fmtTime, newId,
   };

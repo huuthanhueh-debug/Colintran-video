@@ -15,7 +15,7 @@ const ROOT = path.resolve(HERE, '..', '..');
 const SRC = path.join(HERE, '..', 'src');
 const OUT = path.join(HERE, 'build');
 const DIST = path.join(HERE, '..', 'dist');
-const WEB_FILES = ['index.html', 'style.css', 'core.js', 'render.js', 'app.js'];
+const WEB_FILES = ['index.html', 'style.css', 'core.js', 'render.js', 'i18n.js', 'app.js'];
 const ICONS = { mdpi: 48, hdpi: 72, xhdpi: 96, xxhdpi: 144, xxxhdpi: 192 };
 const MIN_SDK = 24, TARGET_SDK = 34;
 const APP_ID = 'com.promptgate.video';

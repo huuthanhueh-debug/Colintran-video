@@ -39,3 +39,9 @@ nav { position: fixed; left: 0; right: 0; bottom: 0; display: grid; grid-templat
 nav button { border: 0; border-radius: 0; background: none; min-height: 56px; }
 #toast { position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%); background: #000; border: 1px solid var(--line); padding: 8px 14px; border-radius: 20px; font-size: 14px; max-width: 90vw; }
 a { color: var(--accent); }
+.top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.lang { display: flex; }
+.lang button { min-height: 36px; padding: 4px 12px; font-size: 14px; border-radius: 0; }
+.lang button:first-child { border-radius: 8px 0 0 8px; }
+.lang button:last-child { border-radius: 0 8px 8px 0; border-left: 0; }
+.lang button.on { background: var(--accent); border-color: var(--accent); font-weight: 600; }

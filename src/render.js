@@ -74,13 +74,14 @@
 
   // Real-time export. opts: { quality, fps, captions, music (HTMLAudioElement), musicVolume,
   // clipAudio, onProgress(0..1), signal: { cancelled } }. Resolves { blob, mime, width, height }.
+  // Rejects with a short code (noScenes, noRecorder, …) that the UI translates.
   function exportVideo(project, media, opts) {
     opts = opts || {};
     return new Promise((resolve, reject) => {
       const total = V.totalDuration(project);
       const mime = supportedMime();
-      if (!total) return reject(new Error('Chưa có cảnh nào để xuất.'));
-      if (!mime) return reject(new Error('Thiết bị này không hỗ trợ ghi video (MediaRecorder).'));
+      if (!total) return reject(new Error('noScenes'));
+      if (!mime) return reject(new Error('noRecorder'));
       const { width, height } = V.dims(project.aspect, opts.quality);
       const fps = opts.fps || 30;
       const canvas = document.createElement('canvas');
@@ -124,13 +125,13 @@
         if (ac) ac.close().catch(() => {});
       };
       rec.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
-      rec.onerror = (e) => { failed = e.error || new Error('Lỗi ghi video'); try { rec.stop(); } catch (_) { finish(); reject(failed); } };
+      rec.onerror = (e) => { failed = e.error || new Error('recordError'); try { rec.stop(); } catch (_) { finish(); reject(failed); } };
       rec.onstop = () => {
         finish();
         if (failed) return reject(failed);
-        if (opts.signal && opts.signal.cancelled) return reject(new Error('Đã huỷ.'));
+        if (opts.signal && opts.signal.cancelled) return reject(new Error('cancelled'));
         const blob = new Blob(chunks, { type: mime.split(';')[0] });
-        if (!blob.size) return reject(new Error('Video rỗng: thiết bị không mã hoá được định dạng này.'));
+        if (!blob.size) return reject(new Error('emptyVideo'));
         resolve({ blob, mime: mime.split(';')[0], width, height });
       };
       drawFrame(ctx, project, 0, media, opts);
