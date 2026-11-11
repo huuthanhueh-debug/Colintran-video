@@ -19,7 +19,7 @@ const WEB_FILES = ['index.html', 'style.css', 'core.js', 'render.js', 'i18n.js',
 const ICONS = { mdpi: 48, hdpi: 72, xhdpi: 96, xxhdpi: 144, xxxhdpi: 192 };
 const MIN_SDK = 24, TARGET_SDK = 34;
 const APP_ID = 'com.promptgate.video';
-const VERSION = { name: '0.1.0', code: 1 };
+const VERSION = { name: '0.2.0', code: 2 };
 const WIN = process.platform === 'win32';
 
 function byVersion(a, b) { return a.localeCompare(b, undefined, { numeric: true }); }

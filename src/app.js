@@ -1,4 +1,4 @@
-// PromptGate Video UI. Four tabs: brief → scenes → prompts per AI tool → local export.
+// PromptGate Video UI. Four tabs: brief → scenes → prompts per AI tool → edit & export.
 // Runs from a local web server on a computer and inside the Android WebView (window.PGVAndroid).
 (function () {
   'use strict';
@@ -40,10 +40,43 @@
   let project = V.normalizeProject(store.get('pgv.project', null));
   let toolId = store.get('pgv.tool', 'veo');
   if (!V.tool(toolId)) toolId = 'veo';
-  const media = new Map(); // sceneId -> { type, el, url, name }
-  const saveProject = () => { store.set('pgv.project', project); renderSummary(); };
+  const media = new Map(); // sceneId -> { type, el, url, name, blob }
+  const extra = { music: null, musicName: '', logo: null, logoName: '' }; // project-wide files
+  const MUSIC_KEY = '*music', LOGO_KEY = '*logo'; // '*' cannot appear in a scene id
+  const openAdv = new Set(); // scene ids whose "advanced" block is open
 
-  // Imported images and clips are kept in IndexedDB so they survive closing the app.
+  // Undo / redo: every saved change pushes the previous project. Media files are not part of
+  // the project, so a deleted scene keeps its file until the app restarts and undo restores it.
+  const hist = { undo: [], redo: [], last: JSON.stringify(project) };
+  function saveProject() {
+    const now = JSON.stringify(project);
+    if (now !== hist.last) {
+      hist.undo.push(hist.last);
+      if (hist.undo.length > 60) hist.undo.shift();
+      hist.redo.length = 0;
+      hist.last = now;
+    }
+    store.set('pgv.project', project);
+    renderSummary();
+  }
+  function travel(from, to, emptyKey) {
+    if (exporting) return;
+    if (!from.length) return toast(t(emptyKey));
+    to.push(hist.last);
+    hist.last = from.pop();
+    project = V.normalizeProject(JSON.parse(hist.last));
+    store.set('pgv.project', project);
+    refresh();
+  }
+  // Scene edits go through here so they always land on the live project object.
+  function edit(i, key, value) {
+    if (!project.scenes[i]) return;
+    project.scenes[i][key] = value;
+    project = V.normalizeProject(project);
+    saveProject();
+  }
+
+  // Imported images, clips, music and logo are kept in IndexedDB so they survive closing the app.
   const idb = {
     db: null,
     open() {
@@ -63,23 +96,50 @@
         catch (_) { res(null); }
       });
     },
+    put: (key, blob, name) => idb.tx('readwrite', (s) => s.put({ blob, name }, key)),
+    del: (key) => idb.tx('readwrite', (s) => s.delete(key)),
   };
   function attach(sceneId, blob, name) {
     return new Promise((res) => {
-      detach(sceneId, true);
+      drop(sceneId);
       const type = /^video\//.test(blob.type) ? 'video' : 'image';
       const url = URL.createObjectURL(blob);
-      const el = type === 'video' ? h('video', { muted: true, playsInline: true, preload: 'auto', loop: true }) : new Image();
-      const done = (ok) => { if (ok) media.set(sceneId, { type, el, url, name }); else URL.revokeObjectURL(url); res(ok); };
+      const el = type === 'video' ? h('video', { muted: true, playsInline: true, preload: 'auto' }) : new Image();
+      const done = (ok) => { if (ok) media.set(sceneId, { type, el, url, name, blob }); else URL.revokeObjectURL(url); res(ok); };
       el.addEventListener(type === 'video' ? 'loadeddata' : 'load', () => done(true), { once: true });
       el.addEventListener('error', () => done(false), { once: true });
+      // A paused clip repaints the preview when a scrub lands on its frame.
+      if (type === 'video') el.addEventListener('seeked', () => { if (tab === 'export' && !pv.playing && !exporting) paint(true); });
       el.src = url;
     });
   }
-  function detach(sceneId, keepStored) {
+  function drop(sceneId) {
     const m = media.get(sceneId);
     if (m) { if (m.type === 'video') m.el.pause(); URL.revokeObjectURL(m.url); media.delete(sceneId); }
-    if (!keepStored) idb.tx('readwrite', (s) => s.delete(sceneId));
+  }
+  function loadImage(blob) {
+    return new Promise((res) => {
+      const img = new Image();
+      img.onload = () => res(img);
+      img.onerror = () => res(null);
+      img.src = URL.createObjectURL(blob);
+    });
+  }
+  function setMusic(blob, name) {
+    if (extra.music) { extra.music.pause(); URL.revokeObjectURL(extra.music.src); }
+    extra.music = blob ? h('audio', { src: URL.createObjectURL(blob), preload: 'auto', loop: true }) : null;
+    extra.musicName = blob ? name || '' : '';
+    $('music-name').textContent = extra.musicName ? '♪ ' + extra.musicName : '';
+    $('music-remove').hidden = !extra.music;
+  }
+  async function setLogo(blob, name) {
+    const img = blob ? await loadImage(blob) : null;
+    if (extra.logo) URL.revokeObjectURL(extra.logo.src);
+    extra.logo = img;
+    extra.logoName = img ? name || '' : '';
+    $('logo-name').textContent = extra.logoName ? '🖼 ' + extra.logoName : '';
+    $('logo-remove').hidden = !img;
+    return !!img;
   }
 
   // ---- saving files ----------------------------------------------------------------------
@@ -124,16 +184,23 @@
     stopPreview();
     for (const s of document.querySelectorAll('.tab')) s.hidden = s.id !== 'tab-' + tab;
     for (const b of $('nav').children) b.classList.toggle('on', b.dataset.tab === tab);
+    refresh();
+    window.scrollTo(0, 0);
+  }
+  // Redraws whatever the current tab builds from the project (after edits, undo, language).
+  function refresh() {
+    renderSummary();
     if (tab === 'scenes') renderScenes();
     if (tab === 'prompts') renderPrompts();
-    if (tab === 'export') setupPreview();
-    window.scrollTo(0, 0);
+    if (tab === 'export') { syncPanels(); setupPreview(); }
   }
   $('nav').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) show(b.dataset.tab); });
   function renderSummary() {
     const n = project.scenes.length;
     $('summary').textContent = n ? t('summary', project.title, n, V.fmtTime(V.totalDuration(project)), project.aspect) : t('summary.empty');
   }
+  $('undo').addEventListener('click', () => travel(hist.undo, hist.redo, 'undo.none'));
+  $('redo').addEventListener('click', () => travel(hist.redo, hist.undo, 'redo.none'));
 
   // ---- brief -----------------------------------------------------------------------------
   // Select boxes are rebuilt on a language switch; the chosen value is kept.
@@ -142,10 +209,18 @@
     el.replaceChildren(...entries.map(([value, textContent]) => h('option', { value, textContent })));
     if (cur) el.value = cur;
   }
+  const labelled = (map) => Object.entries(map).map(([k, v]) => [k, V.label(v, lang)]);
   function fillSelects() {
     fillSelect('aspect', V.ASPECTS.map((a) => [a, t('aspect.' + a)]));
-    fillSelect('style', Object.entries(V.STYLES).map(([k, s]) => [k, V.label(s, lang)]));
+    fillSelect('style', labelled(V.STYLES));
     fillSelect('quality', [['720', '720p'], ['1080', '1080p'], ['360', t('quality.360')]]);
+    fillSelect('fps', [['30', '30'], ['24', '24'], ['60', '60']]);
+    fillSelect('bitrate', [['medium', t('bitrate.medium')], ['high', t('bitrate.high')], ['low', t('bitrate.low')]]);
+    fillSelect('cap-pos', labelled(V.CAP_POS));
+    fillSelect('cap-size', labelled(V.CAP_SIZE));
+    fillSelect('cap-bg', labelled(V.CAP_BG));
+    fillSelect('cap-anim', labelled(V.CAP_ANIM));
+    fillSelect('logo-pos', labelled(V.LOGO_POS));
   }
   fillSelects();
   const briefState = store.get('pgv.brief', {});
@@ -160,8 +235,8 @@
     const b = readBrief();
     if (!V.splitBrief(b.brief).length) return toast(t('brief.empty'));
     if (project.scenes.length && !confirm(t('brief.replace'))) return;
-    for (const id of [...media.keys()]) detach(id);
-    project = V.buildStoryboard({ brief: b.brief, consistency: b.consistency, aspect: b.aspect, style: b.style, totalSeconds: b.total });
+    const keep = { caption: project.caption, music: project.music, logo: project.logo, endFade: project.endFade };
+    project = V.normalizeProject({ ...V.buildStoryboard({ brief: b.brief, consistency: b.consistency, aspect: b.aspect, style: b.style, totalSeconds: b.total }), ...keep });
     store.set('pgv.brief', b);
     saveProject();
     show('scenes');
@@ -169,39 +244,78 @@
 
   // ---- scenes ----------------------------------------------------------------------------
   const options = (map, cur) => Object.entries(map).map(([k, v]) => h('option', { value: k, selected: k === cur, textContent: V.label(v, lang) }));
+  const field = (labelKey, control) => h('div', null, h('label', { textContent: t(labelKey) }), control);
+  const numInput = (i, key, min, max, step, value, rerender) => h('input', { type: 'number', min, max, step, value, on: { change: (e) => { edit(i, key, Number(e.target.value)); if (rerender) renderScenes(); else e.target.value = project.scenes[i][key]; } } });
+  // scale: the project stores value / scale (volume is 0..1 behind a 0..100 slider).
+  const range = (i, key, min, max, value, scale) => h('input', { type: 'range', min, max, value, on: { change: (e) => edit(i, key, Number(e.target.value) / (scale || 1)) } });
+  async function copyMedia(fromId, toId) {
+    const m = media.get(fromId);
+    if (!m) return;
+    await attach(toId, m.blob, m.name);
+    idb.put(toId, m.blob, m.name);
+  }
+  async function duplicate(i) {
+    const r = V.duplicateScene(project, i);
+    if (!r) return toast(t('scene.max', V.LIMITS.scenes));
+    const fromId = project.scenes[i].id;
+    project = r.project;
+    await copyMedia(fromId, r.id);
+    saveProject();
+    refresh();
+  }
   function renderScenes() {
     const box = $('scenes');
     box.replaceChildren();
     if (!project.scenes.length) box.append(h('p', { className: 'muted', textContent: t('scene.none') }));
     project.scenes.forEach((s, i) => {
       const m = media.get(s.id);
-      const set = (key, cast) => (e) => { s[key] = cast ? cast(e.target.value) : e.target.value; project = V.normalizeProject(project); saveProject(); };
+      const set = (key) => (e) => edit(i, key, e.target.value);
       const move = (d) => () => { const j = i + d; if (j < 0 || j >= project.scenes.length) return; project.scenes.splice(j, 0, project.scenes.splice(i, 1)[0]); saveProject(); renderScenes(); };
       const pick = h('input', { type: 'file', accept: 'image/*,video/*', hidden: true, on: { change: async (e) => {
         const f = e.target.files[0];
         if (!f) return;
         if (!(await attach(s.id, f, f.name))) return toast(t('media.bad'));
-        idb.tx('readwrite', (st) => st.put({ blob: f, name: f.name }, s.id));
+        idb.put(s.id, f, f.name);
         renderScenes();
       } } });
-      box.append(h('div', { className: 'card' },
+      const isVideo = m && m.type === 'video';
+      const adv = h('details', { className: 'adv', open: openAdv.has(s.id), on: { toggle: (e) => { if (e.target.open) openAdv.add(s.id); else openAdv.delete(s.id); } } },
+        h('summary', { textContent: t('adv') }),
+        isVideo && h('p', { className: 'small muted', textContent: t('adv.clip', (Math.round(m.el.duration * 10) / 10) || '?') }),
+        isVideo && h('div', { className: 'row' },
+          field('trim.in', numInput(i, 'trimIn', 0, 3600, 0.1, s.trimIn)),
+          field('trim.out', numInput(i, 'trimOut', 0, 3600, 0.1, s.trimOut)),
+          field('speed', h('select', { on: { change: (e) => edit(i, 'speed', Number(e.target.value)) } }, V.SPEEDS.map((v) => h('option', { value: v, selected: v === s.speed, textContent: v + '×' })))),
+          field('clip.volume', range(i, 'volume', 0, 100, Math.round(s.volume * 100), 100))),
+        isVideo && h('button', { textContent: t('clip.fit'), on: { click: () => { edit(i, 'duration', V.clipLength(project.scenes[i], m.el.duration)); renderScenes(); } } }),
+        h('div', { className: 'row' },
+          field('fit', h('select', { on: { change: set('fit') } }, options(V.FITS, s.fit))),
+          field('look', h('select', { on: { change: set('look') } }, options(V.LOOKS, s.look))),
+          field('brightness', range(i, 'brightness', 50, 150, s.brightness)),
+          field('contrast', range(i, 'contrast', 50, 150, s.contrast)),
+          field('saturation', range(i, 'saturation', 0, 200, s.saturation))),
+        h('button', { textContent: t('look.reset'), on: { click: () => { Object.assign(project.scenes[i], { look: 'none', brightness: 100, contrast: 100, saturation: 100 }); saveProject(); renderScenes(); } } }));
+      box.append(h('div', { className: 'card', id: 'scene-' + s.id },
         h('h3', null, t('scene.n', i + 1), h('span', null,
           h('button', { textContent: '↑', title: t('scene.up'), disabled: i === 0, on: { click: move(-1) } }), ' ',
           h('button', { textContent: '↓', title: t('scene.down'), disabled: i === project.scenes.length - 1, on: { click: move(1) } }), ' ',
-          h('button', { textContent: '✕', title: t('scene.delete'), on: { click: () => { detach(s.id); project.scenes.splice(i, 1); saveProject(); renderScenes(); } } }))),
+          h('button', { textContent: '⧉', title: t('scene.dup'), on: { click: () => duplicate(i) } }), ' ',
+          h('button', { textContent: '✕', title: t('scene.delete'), on: { click: () => { project.scenes.splice(i, 1); saveProject(); renderScenes(); } } }))),
         h('label', { textContent: t('scene.text') }),
         h('textarea', { rows: 2, value: s.text, maxLength: V.LIMITS.text, on: { change: set('text') } }),
         h('label', { textContent: t('scene.caption') }),
         h('input', { type: 'text', value: s.caption, maxLength: 160, on: { change: set('caption') } }),
         h('div', { className: 'row' },
-          h('div', null, h('label', { textContent: t('scene.seconds') }), h('input', { type: 'number', min: V.LIMITS.sceneMin, max: V.LIMITS.sceneMax, step: 0.5, value: s.duration, on: { change: (e) => { set('duration', Number)(e); renderScenes(); } } })),
-          h('div', null, h('label', { textContent: t('scene.shot') }), h('select', { on: { change: set('shot') } }, options(V.SHOTS, s.shot))),
-          h('div', null, h('label', { textContent: t('scene.motion') }), h('select', { on: { change: set('motion') } }, options(V.MOTIONS, s.motion))),
-          h('div', null, h('label', { textContent: t('scene.transition') }), h('select', { on: { change: set('transition') } }, options(V.TRANSITIONS, s.transition)))),
+          field('scene.seconds', numInput(i, 'duration', V.LIMITS.sceneMin, V.LIMITS.sceneMax, 0.1, s.duration, true)),
+          field('scene.shot', h('select', { on: { change: set('shot') } }, options(V.SHOTS, s.shot))),
+          field('scene.motion', h('select', { on: { change: set('motion') } }, options(V.MOTIONS, s.motion))),
+          field('scene.transition', h('select', { on: { change: (e) => { edit(i, 'transition', e.target.value); renderScenes(); } } }, options(V.TRANSITIONS, s.transition))),
+          s.transition !== 'cut' && field('scene.transDur', numInput(i, 'transDur', 0.2, 2, 0.1, s.transDur))),
         h('div', { className: 'acts' }, pick,
           h('button', { textContent: m ? t('media.change') : t('media.add'), on: { click: () => pick.click() } }),
-          m && h('button', { textContent: t('media.remove'), on: { click: () => { detach(s.id); renderScenes(); } } }),
-          m && h('span', { className: 'media', textContent: (m.type === 'video' ? '🎬 ' : '🖼 ') + (m.name || '') }))));
+          m && h('button', { textContent: t('media.remove'), on: { click: () => { drop(s.id); idb.del(s.id); renderScenes(); } } }),
+          m && h('span', { className: 'media', textContent: (isVideo ? '🎬 ' : '🖼 ') + (m.name || '') })),
+        adv));
     });
   }
   $('add-scene').addEventListener('click', () => {
@@ -230,29 +344,54 @@
     $('copy-all').onclick = () => copy(V.packText(pack));
   }
 
-  // ---- preview + export ------------------------------------------------------------------
+  // ---- preview, timeline, export ---------------------------------------------------------
   const pv = { ctx: null, t: 0, playing: false, timer: 0, last: 0 };
   let exporting = null;
-  const drawOpts = () => ({ captions: $('captions').checked });
-  function paint() {
+  const drawOpts = (guides) => ({ captions: $('captions').checked, logo: extra.logo, guides });
+  const audioOpts = () => ({ clipAudio: $('clip-audio').checked, music: extra.music });
+  // fromSeek: a clip just landed on its frame, so draw it without asking for another seek.
+  function paint(fromSeek) {
+    if (!pv.ctx) return;
     const total = V.totalDuration(project);
-    const at = R.drawFrame(pv.ctx, project, pv.t, media, drawOpts());
-    R.syncVideos(project, media, at, pv.playing);
+    const at = R.drawFrame(pv.ctx, project, pv.t, media, drawOpts($('guides').checked));
+    if (!fromSeek) R.syncVideos(project, media, at, pv.playing);
+    if (pv.playing) R.mixAudio(project, media, at, pv.t, audioOpts());
     $('seek').value = total ? Math.round((pv.t / total) * 1000) : 0;
     $('clock').textContent = `${V.fmtTime(pv.t)} / ${V.fmtTime(total)}`;
+    const blocks = $('timeline').querySelectorAll('button');
+    blocks.forEach((b, i) => b.classList.toggle('on', !!at && i === at.index));
+    const cur = at && blocks[at.index];
+    $('playhead').hidden = !cur;
+    if (cur) $('playhead').style.left = (cur.offsetLeft + cur.offsetWidth * at.progress) + 'px';
+  }
+  function seekTo(time) {
+    if (exporting) return;
+    stopPreview();
+    pv.t = Math.min(Math.max(0, time), V.totalDuration(project));
+    paint();
+  }
+  function renderTimeline() {
+    const head = $('playhead');
+    $('timeline').replaceChildren(head, ...V.timeline(project).map((x, i) => h('button', {
+      className: media.has(x.scene.id) ? 'has-media' : '', style: `flex-grow:${x.scene.duration}`, title: x.scene.caption,
+      on: { click: () => seekTo(x.start + 0.001) },
+    }, String(i + 1), h('small', { textContent: x.scene.duration + 's' }))));
   }
   function setupPreview() {
     const c = $('preview');
     const d = V.dims(project.aspect, 360);
     c.width = d.width; c.height = d.height;
     pv.ctx = c.getContext('2d');
-    pv.t = 0;
+    pv.t = Math.min(pv.t, V.totalDuration(project));
+    renderTimeline();
     paint();
   }
   function stopPreview() {
     pv.playing = false;
     clearInterval(pv.timer);
     R.syncVideos(project, media, null, false);
+    R.mixAudio(project, media, null, 0, audioOpts());
+    if (extra.music) extra.music.pause();
     $('play').textContent = t('play');
   }
   $('play').addEventListener('click', () => {
@@ -263,27 +402,99 @@
     if (pv.t >= total) pv.t = 0;
     pv.playing = true; pv.last = performance.now();
     $('play').textContent = t('pause');
+    R.resumeAudio();
+    if (extra.music) {
+      try { extra.music.currentTime = extra.music.duration ? pv.t % extra.music.duration : 0; } catch (_) { /* not loaded yet */ }
+      extra.music.play().catch(() => {});
+    }
     pv.timer = setInterval(() => {
       const now = performance.now();
       pv.t += (now - pv.last) / 1000; pv.last = now;
-      if (pv.t >= total) { pv.t = total; paint(); return stopPreview(); }
+      if (pv.t >= total) { pv.t = total; stopPreview(); return paint(); }
       paint();
     }, 1000 / 30);
   });
-  $('seek').addEventListener('input', () => { if (exporting) return; stopPreview(); pv.t = ($('seek').value / 1000) * V.totalDuration(project); paint(); });
-  $('captions').addEventListener('change', () => { if (pv.ctx && !exporting) paint(); });
+  $('seek').addEventListener('input', () => seekTo(($('seek').value / 1000) * V.totalDuration(project)));
+  for (const id of ['captions', 'guides']) $(id).addEventListener('change', () => { if (!exporting) paint(); });
 
-  let musicEl = null;
-  $('music').addEventListener('change', (e) => {
-    if (musicEl) { URL.revokeObjectURL(musicEl.src); musicEl = null; }
-    const f = e.target.files[0];
-    if (f) musicEl = h('audio', { src: URL.createObjectURL(f), preload: 'auto' });
+  const current = () => V.sceneAt(project, pv.t);
+  $('split').addEventListener('click', async () => {
+    const at = current();
+    if (!at || exporting) return;
+    stopPreview();
+    const m = media.get(at.scene.id);
+    const r = V.splitScene(project, at.index, at.local, !!m && m.type === 'video');
+    if (!r) return toast(project.scenes.length >= V.LIMITS.scenes ? t('scene.max', V.LIMITS.scenes) : t('tl.split.bad'));
+    project = r.project;
+    await copyMedia(at.scene.id, r.id);
+    saveProject();
+    refresh();
+  });
+  $('dup').addEventListener('click', () => { const at = current(); if (at && !exporting) { stopPreview(); duplicate(at.index); } });
+  $('edit-scene').addEventListener('click', () => {
+    const at = current();
+    if (!at) return;
+    openAdv.add(at.scene.id);
+    show('scenes');
+    const card = $('scene-' + at.scene.id);
+    if (card) card.scrollIntoView({ block: 'start' });
   });
 
+  // Project-wide panels: every control writes straight into the project (so undo covers it).
+  const PANEL = [
+    ['cap-pos', (v) => { project.caption.pos = v; }, () => project.caption.pos],
+    ['cap-size', (v) => { project.caption.size = v; }, () => project.caption.size],
+    ['cap-bg', (v) => { project.caption.bg = v; }, () => project.caption.bg],
+    ['cap-anim', (v) => { project.caption.anim = v; }, () => project.caption.anim],
+    ['cap-color', (v) => { project.caption.color = v; }, () => project.caption.color],
+    ['volume', (v) => { project.music.volume = v / 100; }, () => Math.round(project.music.volume * 100)],
+    ['fade-in', (v) => { project.music.fadeIn = Number(v); }, () => project.music.fadeIn],
+    ['fade-out', (v) => { project.music.fadeOut = Number(v); }, () => project.music.fadeOut],
+    ['logo-pos', (v) => { project.logo.pos = v; }, () => project.logo.pos],
+    ['logo-size', (v) => { project.logo.size = Number(v); }, () => project.logo.size],
+    ['logo-opacity', (v) => { project.logo.opacity = v / 100; }, () => Math.round(project.logo.opacity * 100)],
+  ];
+  const CHECKS = [['duck', (v) => { project.music.duck = v; }, () => project.music.duck], ['end-fade', (v) => { project.endFade = v; }, () => project.endFade]];
+  function syncPanels() {
+    for (const [id, , get] of PANEL) $(id).value = get();
+    for (const [id, , get] of CHECKS) $(id).checked = get();
+  }
+  const panelChanged = () => { project = V.normalizeProject(project); saveProject(); syncPanels(); if (!exporting) paint(); };
+  for (const [id, put] of PANEL) $(id).addEventListener('change', (e) => { put(e.target.value); panelChanged(); });
+  for (const [id, put] of CHECKS) $(id).addEventListener('change', (e) => { put(e.target.checked); panelChanged(); });
+
+  $('music').addEventListener('change', (e) => {
+    const f = e.target.files[0];
+    e.target.value = '';
+    if (!f) return;
+    stopPreview();
+    const probe = h('audio', { preload: 'metadata' });
+    const url = URL.createObjectURL(f);
+    const done = (ok) => { URL.revokeObjectURL(url); if (!ok) return toast(t('music.bad')); setMusic(f, f.name); idb.put(MUSIC_KEY, f, f.name); };
+    probe.addEventListener('loadedmetadata', () => done(true), { once: true });
+    probe.addEventListener('error', () => done(false), { once: true });
+    probe.src = url;
+  });
+  $('music-remove').addEventListener('click', () => { stopPreview(); setMusic(null); idb.del(MUSIC_KEY); });
+  $('logo').addEventListener('change', async (e) => {
+    const f = e.target.files[0];
+    e.target.value = '';
+    if (!f) return;
+    if (!(await setLogo(f, f.name))) return toast(t('media.bad'));
+    idb.put(LOGO_KEY, f, f.name);
+    paint();
+  });
+  $('logo-remove').addEventListener('click', async () => { await setLogo(null); idb.del(LOGO_KEY); paint(); });
+
+  const exportState = store.get('pgv.export', {});
+  for (const id of ['quality', 'fps', 'bitrate']) {
+    if (exportState[id]) $(id).value = exportState[id];
+    $(id).addEventListener('change', () => store.set('pgv.export', { quality: $('quality').value, fps: $('fps').value, bitrate: $('bitrate').value }));
+  }
   async function runExport(quality) {
     const res = await R.exportVideo(project, media, {
-      quality, captions: $('captions').checked, clipAudio: $('clip-audio').checked,
-      music: musicEl, musicVolume: $('volume').value / 100, signal: exporting,
+      quality, fps: $('fps').value, bitrate: $('bitrate').value, captions: $('captions').checked, logo: extra.logo,
+      clipAudio: $('clip-audio').checked, music: extra.music, signal: exporting,
       onProgress: (p) => { $('progress').value = p; },
     });
     const name = V.fileName(project.title, V.extFor(res.mime));
@@ -306,6 +517,7 @@
     exporting = null;
     $('export').textContent = t('export');
     $('progress').hidden = true;
+    paint();
   });
 
   const saved = (p) => p.then((where) => toast(t('saved', where)), (e) => toast(why(e)));
@@ -319,14 +531,12 @@
       if (f.size > 2 * 1048576) throw new Error('too big');
       const p = V.normalizeProject(JSON.parse(await f.text()));
       if (!p.scenes.length) throw new Error('empty');
-      for (const id of [...media.keys()]) detach(id);
-      project = p; saveProject(); setupPreview();
+      project = p; saveProject(); refresh();
       toast(t('opened', p.title, p.scenes.length));
     } catch (_) { toast(t('open.bad')); }
   });
 
   // ---- start -----------------------------------------------------------------------------
-  // External links leave the app: Android opens them in the browser (see MainActivity).
   // Fills every static label, then redraws whatever the current tab built from code.
   function applyLang() {
     document.documentElement.lang = lang;
@@ -334,12 +544,11 @@
     for (const el of document.querySelectorAll('[data-ph]')) el.placeholder = t(el.dataset.ph);
     for (const b of $('lang').children) { b.classList.toggle('on', b.dataset.lang === lang); b.setAttribute('aria-pressed', String(b.dataset.lang === lang)); }
     $('seek').setAttribute('aria-label', t('seek'));
+    for (const id of ['undo', 'redo']) { $(id).title = t(id); $(id).setAttribute('aria-label', t(id)); }
     $('play').textContent = t(pv.playing ? 'pause' : 'play');
     $('export').textContent = t(exporting ? 'export.cancel' : 'export');
     fillSelects();
-    renderSummary();
-    if (tab === 'scenes') renderScenes();
-    if (tab === 'prompts') renderPrompts();
+    if (tab === 'export') { syncPanels(); renderSummary(); } else refresh();
   }
   $('lang').addEventListener('click', (e) => {
     const b = e.target.closest('button');
@@ -350,23 +559,38 @@
     if (!exporting) $('export-status').textContent = '';
     applyLang();
   });
+  setMusic(null);
+  setLogo(null);
   applyLang();
   const selftest = /[?&]selftest=1/.test(location.search);
   idb.open().then(async () => {
     if (selftest) return;
+    // Files whose scene no longer exists (deleted in an earlier session) are cleaned up here.
+    const ids = new Set(project.scenes.map((s) => s.id));
+    for (const key of (await idb.tx('readonly', (st) => st.getAllKeys())) || []) {
+      if (key !== MUSIC_KEY && key !== LOGO_KEY && !ids.has(key)) idb.del(key);
+    }
     for (const s of project.scenes) {
       const rec = await idb.tx('readonly', (st) => st.get(s.id));
       if (rec && rec.blob) await attach(s.id, rec.blob, rec.name);
     }
-    if (project.scenes.length) show('scenes');
+    const mus = await idb.tx('readonly', (st) => st.get(MUSIC_KEY));
+    if (mus && mus.blob) setMusic(mus.blob, mus.name);
+    const logo = await idb.tx('readonly', (st) => st.get(LOGO_KEY));
+    if (logo && logo.blob) await setLogo(logo.blob, logo.name);
+    // Loading files takes a moment: only jump to the scenes if the user has not moved on already.
+    if (project.scenes.length && tab === 'brief') show('scenes'); else refresh();
   });
 
-  // ?selftest=1 renders a 3-second demo end to end and reports on the console. Used by the
+  // ?selftest=1 renders a short demo end to end and reports on the console. Used by the
   // automated tests (desktop Chromium and the Android emulator); it never touches saved work.
   if (selftest) {
     (async () => {
       try {
         project = V.buildStoryboard({ brief: 'Sunrise over the beach.\nA guest opens the curtains.', aspect: '9:16', totalSeconds: 3, style: 'hospitality', title: 'pgv selftest' });
+        Object.assign(project.scenes[0], { look: 'film' });
+        Object.assign(project.scenes[1], { transition: 'slide-left', look: 'warm' });
+        project = V.normalizeProject({ ...project, caption: { anim: 'rise', bg: 'outline' } });
         show('export');
         exporting = { cancelled: false };
         const r = await runExport(360);

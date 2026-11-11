@@ -1,6 +1,6 @@
 // PromptGate Video core: pure logic shared by the browser app, the Android WebView and the Node
 // tests. No DOM, no Node APIs. Storyboard from a brief, per-tool prompt packs for 11 AI video
-// tools, timeline maths for the local renderer, subtitles, project validation.
+// tools, timeline and clip-editing maths for the local renderer, subtitles, project validation.
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
   else root.PGVideo = factory();
@@ -8,9 +8,8 @@
   'use strict';
 
   const CHECKED = '2026-11-10';
-  const LIMITS = { scenes: 30, sceneMin: 1, sceneMax: 60, text: 600, total: 600 };
+  const LIMITS = { scenes: 30, sceneMin: 0.5, sceneMax: 60, text: 600, total: 600, speedMin: 0.25, speedMax: 4 };
   const ASPECTS = ['9:16', '16:9', '1:1'];
-  const FADE = 0.4;
 
   // Tool profiles. Numbers come from vendor pages and press summaries read on CHECKED; they move
   // fast, so the UI shows the date and a link. `clips` = fixed lengths per generation (s),
@@ -86,7 +85,33 @@
     'tilt-up': { name: 'Tilt up', vi: 'Ngước lên', en: 'gentle tilt up' },
     static: { name: 'Static', vi: 'Máy tĩnh', en: 'locked-off static camera' },
   };
-  const TRANSITIONS = { fade: { name: 'Fade', vi: 'Mờ dần' }, cut: { name: 'Hard cut', vi: 'Cắt thẳng' } };
+  // A transition is how a scene ENTERS, over the first `transDur` seconds of that scene.
+  const TRANSITIONS = {
+    cut: { name: 'Hard cut', vi: 'Cắt thẳng' },
+    fade: { name: 'Fade from black', vi: 'Mờ từ đen' },
+    dissolve: { name: 'Cross dissolve', vi: 'Hoà tan' },
+    'slide-left': { name: 'Slide left', vi: 'Trượt trái' },
+    'slide-up': { name: 'Slide up', vi: 'Trượt lên' },
+    wipe: { name: 'Wipe', vi: 'Quét ngang' },
+    zoom: { name: 'Zoom through', vi: 'Phóng xuyên' },
+  };
+  // Colour looks as CSS filter lists (canvas ctx.filter). Sliders are added on top.
+  const LOOKS = {
+    none: { name: 'None', vi: 'Không', css: '' },
+    warm: { name: 'Warm', vi: 'Ấm', css: 'sepia(0.25) saturate(1.2)' },
+    cool: { name: 'Cool', vi: 'Lạnh', css: 'hue-rotate(8deg) saturate(1.05) brightness(1.02)' },
+    vivid: { name: 'Vivid', vi: 'Rực rỡ', css: 'saturate(1.45) contrast(1.08)' },
+    film: { name: 'Film', vi: 'Điện ảnh', css: 'contrast(1.15) saturate(0.88) brightness(0.97)' },
+    vintage: { name: 'Vintage', vi: 'Hoài cổ', css: 'sepia(0.45) contrast(0.92) brightness(1.05)' },
+    mono: { name: 'Black & white', vi: 'Đen trắng', css: 'grayscale(1) contrast(1.1)' },
+  };
+  const FITS = { cover: { name: 'Fill frame', vi: 'Lấp đầy khung' }, contain: { name: 'Fit, blurred sides', vi: 'Vừa khung, nền mờ' } };
+  const CAP_POS = { bottom: { name: 'Bottom', vi: 'Dưới' }, middle: { name: 'Middle', vi: 'Giữa' }, top: { name: 'Top', vi: 'Trên' } };
+  const CAP_SIZE = { s: { name: 'Small', vi: 'Nhỏ', k: 0.042 }, m: { name: 'Medium', vi: 'Vừa', k: 0.052 }, l: { name: 'Large', vi: 'Lớn', k: 0.068 } };
+  const CAP_BG = { box: { name: 'Dark box', vi: 'Hộp tối' }, outline: { name: 'Outline', vi: 'Viền chữ' }, none: { name: 'Shadow only', vi: 'Chỉ bóng đổ' } };
+  const CAP_ANIM = { none: { name: 'No animation', vi: 'Không động' }, fade: { name: 'Fade in', vi: 'Hiện dần' }, rise: { name: 'Rise', vi: 'Trồi lên' }, type: { name: 'Typewriter', vi: 'Gõ chữ' } };
+  const LOGO_POS = { tr: { name: 'Top right', vi: 'Trên phải' }, tl: { name: 'Top left', vi: 'Trên trái' }, br: { name: 'Bottom right', vi: 'Dưới phải' }, bl: { name: 'Bottom left', vi: 'Dưới trái' } };
+  const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
   // UI label of a style / shot / motion / transition entry in the chosen language.
   const label = (entry, lang) => (lang === 'en' ? entry.name : entry.vi);
   const SHOT_CYCLE = ['wide', 'medium', 'close', 'medium', 'detail', 'wide'];
@@ -95,6 +120,8 @@
   const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
   const num = (v, d) => (Number.isFinite(Number(v)) ? Number(v) : d);
   const half = (n) => Math.round(n * 2) / 2;
+  const tenth = (n) => Math.round(n * 10) / 10;
+  const pick = (map, v, d) => (Object.prototype.hasOwnProperty.call(map, v) ? v : d);
   const clean = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
   const words = (s) => (clean(s) ? clean(s).split(' ').length : 0);
   const tool = (id) => TOOLS.find((t) => t.id === id) || null;
@@ -154,7 +181,7 @@
       scenes: parts.map((text, i) => ({
         text, caption: caption(text), duration: dur[i],
         shot: SHOT_CYCLE[i % SHOT_CYCLE.length], motion: MOTION_CYCLE[i % MOTION_CYCLE.length],
-        transition: 'fade',
+        transition: i === 0 ? 'fade' : 'dissolve',
       })),
     });
   }
@@ -169,12 +196,25 @@
         id: typeof s.id === 'string' && /^[\w-]{1,40}$/.test(s.id) ? s.id : newId(),
         text,
         caption: s.caption == null ? caption(text) : clean(s.caption).slice(0, 160),
-        duration: clamp(half(num(s.duration, 4)), LIMITS.sceneMin, LIMITS.sceneMax),
-        shot: SHOTS[s.shot] ? s.shot : 'medium',
-        motion: MOTIONS[s.motion] ? s.motion : 'push-in',
-        transition: TRANSITIONS[s.transition] ? s.transition : 'fade',
+        duration: clamp(tenth(num(s.duration, 4)), LIMITS.sceneMin, LIMITS.sceneMax),
+        shot: pick(SHOTS, s.shot, 'medium'),
+        motion: pick(MOTIONS, s.motion, 'push-in'),
+        transition: pick(TRANSITIONS, s.transition, 'dissolve'),
+        transDur: clamp(tenth(num(s.transDur, 0.5)), 0.2, 2),
+        // Clip editing. trimOut 0 means "to the end of the clip"; both are seconds in the source.
+        trimIn: clamp(tenth(num(s.trimIn, 0)), 0, 3600),
+        trimOut: num(s.trimOut, 0) > num(s.trimIn, 0) ? clamp(tenth(num(s.trimOut, 0)), 0, 3600) : 0,
+        speed: clamp(Math.round(num(s.speed, 1) * 20) / 20, LIMITS.speedMin, LIMITS.speedMax),
+        volume: clamp(Math.round(num(s.volume, 1) * 100) / 100, 0, 1),
+        fit: pick(FITS, s.fit, 'cover'),
+        look: pick(LOOKS, s.look, 'none'),
+        brightness: clamp(Math.round(num(s.brightness, 100)), 50, 150),
+        contrast: clamp(Math.round(num(s.contrast, 100)), 50, 150),
+        saturation: clamp(Math.round(num(s.saturation, 100)), 0, 200),
       };
     });
+    const obj = (v) => (v && typeof v === 'object' ? v : {});
+    const cap = obj(p.caption), mus = obj(p.music), logo = obj(p.logo);
     const ids = new Set();
     for (const s of scenes) { if (ids.has(s.id)) s.id = newId(); ids.add(s.id); }
     return {
@@ -183,6 +223,16 @@
       aspect: ASPECTS.includes(p.aspect) ? p.aspect : '9:16',
       style: STYLES[p.style] ? p.style : 'cinematic',
       consistency: clean(p.consistency).slice(0, 300),
+      caption: {
+        pos: pick(CAP_POS, cap.pos, 'bottom'), size: pick(CAP_SIZE, cap.size, 'm'), bg: pick(CAP_BG, cap.bg, 'box'),
+        anim: pick(CAP_ANIM, cap.anim, 'fade'), color: /^#[0-9a-f]{6}$/i.test(cap.color) ? cap.color.toLowerCase() : '#ffffff',
+      },
+      music: {
+        volume: clamp(Math.round(num(mus.volume, 0.6) * 100) / 100, 0, 1), fadeIn: clamp(tenth(num(mus.fadeIn, 0)), 0, 10),
+        fadeOut: clamp(tenth(num(mus.fadeOut, 1.5)), 0, 10), duck: mus.duck !== false,
+      },
+      logo: { pos: pick(LOGO_POS, logo.pos, 'tr'), size: clamp(Math.round(num(logo.size, 16)), 6, 40), opacity: clamp(Math.round(num(logo.opacity, 0.9) * 100) / 100, 0.1, 1) },
+      endFade: p.endFade !== false,
       scenes,
     };
   }
@@ -285,23 +335,116 @@
     let t = 0;
     return project.scenes.map((scene) => ({ scene, start: t, end: (t += scene.duration) }));
   }
-  // Which scene is on screen at time t, how far through it, and its fade opacity (0..1).
+  const ease = (p) => { p = clamp(p, 0, 1); return p * p * (3 - 2 * p); };
+  // Which scene is on screen at time t and how far through it. `trans` is set while the scene
+  // is still entering: { type, p (0..1 eased), prev (index of the outgoing scene or -1) }.
+  // `out` is the opacity of the closing fade to black (1 = fully visible).
   function sceneAt(project, t) {
     const tl = timeline(project);
     if (!tl.length) return null;
-    t = clamp(num(t, 0), 0, tl[tl.length - 1].end);
+    const total = tl[tl.length - 1].end;
+    t = clamp(num(t, 0), 0, total);
     let i = tl.findIndex((x) => t < x.end);
     if (i < 0) i = tl.length - 1;
     const { scene, start } = tl[i];
     const local = t - start;
-    let alpha = 1;
-    if (scene.transition === 'fade') {
-      const f = Math.min(FADE, scene.duration / 3);
-      alpha = clamp(Math.min(local / f, (scene.duration - local) / f), 0, 1);
-      if (i === tl.length - 1 && scene.duration - local <= 0) alpha = 0;
+    let trans = null;
+    if (scene.transition !== 'cut') {
+      const d = Math.min(scene.transDur, scene.duration / 2);
+      // The first scene has nothing to blend from, so any transition there is a fade from black.
+      if (local < d) trans = { type: i === 0 ? 'fade' : scene.transition, p: ease(local / d), prev: i - 1 };
     }
-    return { index: i, scene, local, progress: clamp(local / scene.duration, 0, 1), alpha };
+    const out = project.endFade ? clamp((total - t) / Math.min(0.5, total / 4), 0, 1) : 1;
+    return { index: i, scene, start, local, progress: clamp(local / scene.duration, 0, 1), trans, out };
   }
+
+  // ---- clip editing ----------------------------------------------------------------------
+  // The part of a source clip a scene uses: [start, end] in source seconds.
+  function clipRange(scene, mediaDuration) {
+    const len = num(mediaDuration, 0) > 0 ? Number(mediaDuration) : 0;
+    // Length not known yet and no trim end: play on from the trim start without looping.
+    let end = scene.trimOut > 0 ? scene.trimOut : len || Infinity;
+    if (len) end = Math.min(end, len);
+    const start = clamp(scene.trimIn, 0, Math.max(0, end - 0.1));
+    return { start, end: Math.max(end, start) };
+  }
+  // Source time shown `local` seconds into the scene. A clip shorter than its scene loops
+  // inside the trimmed range; the very end holds the last frame instead of wrapping.
+  function clipTime(scene, local, mediaDuration) {
+    const { start, end } = clipRange(scene, mediaDuration);
+    const span = end - start;
+    if (!(span > 0)) return start;
+    const pos = Math.max(0, local) * scene.speed;
+    const wrapped = pos % span;
+    if (pos >= span && wrapped < 1e-6) return end - 0.04;
+    return start + wrapped;
+  }
+  // Scene length that plays the trimmed clip exactly once at the scene's speed.
+  function clipLength(scene, mediaDuration) {
+    const { start, end } = clipRange(scene, mediaDuration);
+    return clamp(tenth((end - start) / scene.speed), LIMITS.sceneMin, LIMITS.sceneMax);
+  }
+  // Cuts scene `index` in two at `local` seconds. Returns { project, id } (id of the new second
+  // half) or null when the cut would leave a piece shorter than the minimum.
+  function splitScene(proj, index, local, isVideo) {
+    const project = normalizeProject(proj);
+    const s = project.scenes[index];
+    local = tenth(num(local, 0));
+    if (!s || project.scenes.length >= LIMITS.scenes || local < LIMITS.sceneMin || s.duration - local < LIMITS.sceneMin) return null;
+    const second = { ...s, id: newId(), duration: tenth(s.duration - local), transition: 'cut' };
+    if (isVideo) {
+      const cut = tenth(s.trimIn + local * s.speed);
+      if (!(s.trimOut > 0) || cut < s.trimOut) { second.trimIn = cut; s.trimOut = cut; }
+    }
+    s.duration = local;
+    project.scenes.splice(index + 1, 0, second);
+    return { project: normalizeProject(project), id: second.id };
+  }
+  function duplicateScene(proj, index) {
+    const project = normalizeProject(proj);
+    const s = project.scenes[index];
+    if (!s || project.scenes.length >= LIMITS.scenes) return null;
+    const copy = { ...s, id: newId() };
+    project.scenes.splice(index + 1, 0, copy);
+    return { project, id: copy.id };
+  }
+  // ctx.filter string for a scene: its look plus the three sliders. '' means no filter.
+  function filterCss(scene) {
+    const parts = [LOOKS[scene.look] ? LOOKS[scene.look].css : ''];
+    if (scene.brightness !== 100) parts.push(`brightness(${scene.brightness / 100})`);
+    if (scene.contrast !== 100) parts.push(`contrast(${scene.contrast / 100})`);
+    if (scene.saturation !== 100) parts.push(`saturate(${scene.saturation / 100})`);
+    return parts.filter(Boolean).join(' ');
+  }
+  // Where to draw a sw×sh source in a W×H frame. cover fills (cropping), contain letterboxes.
+  function fitRect(sw, sh, W, H, mode) {
+    const k = mode === 'contain' ? Math.min(W / sw, H / sh) : Math.max(W / sw, H / sh);
+    return { x: (W - sw * k) / 2, y: (H - sh * k) / 2, w: sw * k, h: sh * k };
+  }
+  function logoRect(logo, W, H, iw, ih) {
+    const w = (W * logo.size) / 100, h = (w * ih) / iw, m = Math.min(W, H) * 0.04;
+    return { x: logo.pos[1] === 'l' ? m : W - w - m, y: logo.pos[0] === 't' ? m : H - h - m, w, h };
+  }
+  // How much of a caption is visible `local` seconds into its scene.
+  function captionReveal(anim, local, text, duration) {
+    const p = ease(local / 0.4);
+    if (anim === 'fade') return { alpha: p, dy: 0, chars: text.length };
+    if (anim === 'rise') return { alpha: p, dy: 1 - p, chars: text.length };
+    if (anim === 'type') return { alpha: 1, dy: 0, chars: Math.min(text.length, Math.floor(local * Math.max(30, text.length / (0.6 * duration)))) };
+    return { alpha: 1, dy: 0, chars: text.length };
+  }
+  // Music level at time t: volume × fade in × fade out, lowered while a clip with sound plays.
+  function musicGain(project, t, ducked) {
+    const m = project.music, total = totalDuration(project);
+    const fin = m.fadeIn > 0 ? clamp(t / m.fadeIn, 0, 1) : 1;
+    const fout = m.fadeOut > 0 ? clamp((total - t) / m.fadeOut, 0, 1) : 1;
+    return m.volume * fin * fout * (ducked && m.duck ? 0.3 : 1);
+  }
+  const BPP = { low: 0.07, medium: 0.12, high: 0.2 };
+  function bitrate(width, height, fps, level) {
+    return Math.round(clamp(width * height * fps * (BPP[level] || BPP.medium), 500000, 40000000));
+  }
+
   // Ken Burns transform: scale >= 1 and offsets as a fraction of the frame, always covering it.
   function motionTransform(motion, p) {
     p = clamp(num(p, 0), 0, 1);
@@ -362,7 +505,8 @@
   }
 
   return {
-    CHECKED, LIMITS, ASPECTS, FADE, TOOLS, STYLES, SHOTS, MOTIONS, TRANSITIONS, MIMES,
+    CHECKED, LIMITS, ASPECTS, TOOLS, STYLES, SHOTS, MOTIONS, TRANSITIONS, LOOKS, FITS, CAP_POS, CAP_SIZE, CAP_BG, CAP_ANIM, LOGO_POS, SPEEDS, MIMES,
+    ease, clipRange, clipTime, clipLength, splitScene, duplicateScene, filterCss, fitRect, logoRect, captionReveal, musicGain, bitrate,
     tool, label, splitBrief, caption, distribute, buildStoryboard, normalizeProject, nearestAspect, fitClip,
     buildPack, packText, totalDuration, timeline, sceneAt, motionTransform, dims, wrapLines, pickMime,
     extFor, fileName, toSRT, fmtTime, newId,

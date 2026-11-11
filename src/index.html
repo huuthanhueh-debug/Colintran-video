@@ -12,6 +12,7 @@
 <header>
   <div class="top">
     <h1>PromptGate <span>Video</span></h1>
+    <div class="hist"><button id="undo">↶</button><button id="redo">↷</button></div>
     <div id="lang" class="lang" role="group" aria-label="Language">
       <button data-lang="vi">VI</button><button data-lang="en">EN</button>
     </div>
@@ -54,13 +55,64 @@
       <input id="seek" type="range" min="0" max="1000" value="0">
       <span id="clock" class="muted">0:00</span>
     </div>
-    <div class="row">
-      <div><label for="quality" data-t="quality"></label><select id="quality"></select></div>
-      <div><label for="music" data-t="music"></label><input id="music" type="file" accept="audio/*"></div>
-      <div><label for="volume" data-t="volume"></label><input id="volume" type="range" min="0" max="100" value="60"></div>
+    <div id="timeline" class="timeline"><div id="playhead" class="playhead"></div></div>
+    <div class="row tight">
+      <button id="split" data-t="tl.split"></button>
+      <button id="dup" data-t="tl.dup"></button>
+      <button id="edit-scene" data-t="tl.edit"></button>
+      <label class="check"><input id="guides" type="checkbox"> <span data-t="guides"></span></label>
     </div>
-    <label class="check"><input id="captions" type="checkbox" checked> <span data-t="captions"></span></label>
-    <label class="check"><input id="clip-audio" type="checkbox" checked> <span data-t="clipAudio"></span></label>
+
+    <details class="panel">
+      <summary data-t="panel.text"></summary>
+      <div class="row">
+        <div><label for="cap-pos" data-t="cap.pos"></label><select id="cap-pos"></select></div>
+        <div><label for="cap-size" data-t="cap.size"></label><select id="cap-size"></select></div>
+        <div><label for="cap-bg" data-t="cap.bg"></label><select id="cap-bg"></select></div>
+        <div><label for="cap-anim" data-t="cap.anim"></label><select id="cap-anim"></select></div>
+        <div><label for="cap-color" data-t="cap.color"></label><input id="cap-color" type="color" value="#ffffff"></div>
+      </div>
+      <label class="check"><input id="captions" type="checkbox" checked> <span data-t="captions"></span></label>
+    </details>
+
+    <details class="panel">
+      <summary data-t="panel.audio"></summary>
+      <label for="music" data-t="music"></label>
+      <input id="music" type="file" accept="audio/*">
+      <p id="music-name" class="media small"></p>
+      <div class="row">
+        <div><label for="volume" data-t="volume"></label><input id="volume" type="range" min="0" max="100" value="60"></div>
+        <div><label for="fade-in" data-t="music.fadeIn"></label><input id="fade-in" type="number" min="0" max="10" step="0.5"></div>
+        <div><label for="fade-out" data-t="music.fadeOut"></label><input id="fade-out" type="number" min="0" max="10" step="0.5"></div>
+      </div>
+      <label class="check"><input id="duck" type="checkbox"> <span data-t="music.duck"></span></label>
+      <label class="check"><input id="clip-audio" type="checkbox" checked> <span data-t="clipAudio"></span></label>
+      <button id="music-remove" data-t="music.remove"></button>
+    </details>
+
+    <details class="panel">
+      <summary data-t="panel.logo"></summary>
+      <label for="logo" data-t="logo.file"></label>
+      <input id="logo" type="file" accept="image/*">
+      <p id="logo-name" class="media small"></p>
+      <div class="row">
+        <div><label for="logo-pos" data-t="logo.pos"></label><select id="logo-pos"></select></div>
+        <div><label for="logo-size" data-t="logo.size"></label><input id="logo-size" type="range" min="6" max="40"></div>
+        <div><label for="logo-opacity" data-t="logo.opacity"></label><input id="logo-opacity" type="range" min="10" max="100"></div>
+      </div>
+      <button id="logo-remove" data-t="logo.remove"></button>
+    </details>
+
+    <details class="panel" open>
+      <summary data-t="panel.export"></summary>
+      <div class="row">
+        <div><label for="quality" data-t="quality"></label><select id="quality"></select></div>
+        <div><label for="fps" data-t="fps"></label><select id="fps"></select></div>
+        <div><label for="bitrate" data-t="bitrate"></label><select id="bitrate"></select></div>
+      </div>
+      <label class="check"><input id="end-fade" type="checkbox"> <span data-t="endFade"></span></label>
+    </details>
+
     <button id="export" class="primary"></button>
     <progress id="progress" max="1" value="0" hidden></progress>
     <p id="export-status" class="muted" role="status"></p>

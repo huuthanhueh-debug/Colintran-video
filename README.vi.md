@@ -11,7 +11,20 @@ Giao diện có hai ngôn ngữ: bấm **VI** hoặc **EN** ở góc trên bên 
 | Ý tưởng | Mỗi câu hoặc mỗi dòng là một cảnh. Chọn khung hình (9:16, 16:9, 1:1), tổng thời lượng, phong cách. |
 | Cảnh | Sửa mô tả, phụ đề, số giây, cỡ cảnh, chuyển động máy, chuyển cảnh. Gắn ảnh hoặc clip cho từng cảnh. |
 | Prompt | Chọn công cụ, sao chép prompt từng cảnh (hoặc cả video). App cảnh báo khi cảnh dài hơn một lần tạo hoặc công cụ không hỗ trợ khung hình. |
-| Xuất | Xem thử, thêm nhạc nền, xuất MP4 (hoặc WebM nếu máy không mã hoá được MP4), lưu phụ đề .srt và dự án .json. |
+| Xuất | Bàn dựng: xem thử có tiếng, timeline, chỉnh chữ / âm thanh / logo, xuất MP4 (hoặc WebM nếu máy không mã hoá được MP4), lưu phụ đề .srt và dự án .json. |
+
+## Công cụ dựng
+
+| Nhóm | Có gì |
+|---|---|
+| Timeline | Khối cảnh theo tỉ lệ thời lượng, đầu phát, chạm để nhảy tới cảnh, **tách tại đầu phát**, nhân đôi, hoàn tác / làm lại (↶ ↷). |
+| Clip | Cắt đầu / cắt cuối (trim), tốc độ 0.25×–4×, âm lượng từng clip, khớp thời lượng cảnh với clip; clip ngắn hơn cảnh thì lặp trong đoạn đã cắt. |
+| Chuyển cảnh | Cắt thẳng, mờ từ đen, hoà tan, trượt trái, trượt lên, quét ngang, phóng xuyên; thời lượng 0.2–2 giây. |
+| Hình | Lấp đầy khung hoặc vừa khung với nền mờ; 7 tông màu (ấm, lạnh, rực rỡ, điện ảnh, hoài cổ, đen trắng) và độ sáng / tương phản / độ đậm màu. |
+| Chữ | Vị trí trên / giữa / dưới, 3 cỡ, màu, nền hộp / viền / bóng đổ, hiệu ứng hiện dần / trồi lên / gõ chữ. |
+| Âm thanh | Nhạc nền có vào dần / tắt dần, tự hạ nhạc khi clip có tiếng, giữ hoặc tắt tiếng gốc của clip. |
+| Thương hiệu | Logo ở 4 góc, chỉnh kích thước và độ rõ; khung an toàn để tránh nút của TikTok / Reels. |
+| Xuất | 360p / 720p / 1080p, 24 / 30 / 60 khung hình/giây, 3 mức bitrate, mờ về đen ở cuối. |
 
 ## 11 công cụ (đối chiếu ngày 2026-11-10)
 
@@ -58,7 +71,9 @@ Mặc định ký bằng khoá debug tạo tại chỗ, nên bản build từ m�
 - App không tự sinh hình bằng AI: clip do các công cụ trên tạo, app lo prompt và khâu ghép.
 - App không dịch: prompt giữ nguyên câu bạn viết, nên viết mô tả cảnh bằng tiếng Anh.
 - Xuất chạy theo thời gian thực và phải giữ app mở.
-- Chuyển cảnh hiện có mờ dần và cắt thẳng.
+- Một lớp hình cho mỗi cảnh: chưa có nhiều track chồng nhau, keyframe hay hình trong hình.
+- Hoàn tác không khôi phục file ảnh / clip đã bấm Gỡ (chỉ khôi phục cảnh và thông số).
+- Bộ lọc màu cần Chrome / WebView đời mới; máy không hỗ trợ thì hình giữ nguyên màu gốc.
 
 ## Test
 
