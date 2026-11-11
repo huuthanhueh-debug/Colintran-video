@@ -123,6 +123,22 @@
     </div>
     <p class="muted small" data-t="export.note"></p>
   </section>
+  <section id="tab-local" class="tab" hidden>
+    <div class="card">
+      <h3 data-t="local.title"></h3>
+      <p id="local-status" class="small"></p>
+      <p class="small muted" data-t="local.how"></p>
+      <pre id="local-cmd"></pre>
+    </div>
+    <div class="card">
+      <h3><span data-t="asst.title"></span><span id="asst-state" class="tag"></span></h3>
+      <p class="small muted" data-t="asst.hint"></p>
+      <div id="asst-log" class="chat" aria-live="polite"></div>
+      <div id="asst-ideas" class="chips"></div>
+      <textarea id="asst-input" rows="2" maxlength="2000" data-ph="asst.ph"></textarea>
+      <button id="asst-send" class="primary" data-t="asst.send"></button>
+    </div>
+  </section>
 </main>
 
 <nav id="nav">
@@ -130,6 +146,7 @@
   <button data-tab="scenes" data-t="tab.scenes"></button>
   <button data-tab="prompts" data-t="tab.prompts"></button>
   <button data-tab="export" data-t="tab.export"></button>
+  <button data-tab="local" data-t="tab.local"></button>
 </nav>
 <div id="toast" role="status" hidden></div>
 

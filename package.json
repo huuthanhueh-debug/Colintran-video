@@ -1,0 +1,14 @@
+{
+  "name": "promptgate-video",
+  "version": "0.3.0",
+  "private": true,
+  "description": "Offline video studio: storyboard, prompts for 11 AI video tools, editing, local export. Desktop + Android APK. VI/EN.",
+  "scripts": {
+    "start": "node server.js",
+    "video": "node server.js",
+    "test": "node tests/video.js",
+    "build:apk": "node android/build.js"
+  },
+  "engines": { "node": ">=18" },
+  "license": "MIT"
+}

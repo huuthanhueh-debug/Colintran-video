@@ -1,4 +1,5 @@
-// PromptGate Video UI. Four tabs: brief → scenes → prompts per AI tool → edit & export.
+// PromptGate Video UI. Five tabs: brief → scenes → prompts per AI tool → edit & export, plus
+// "Local" (running on a computer and the Claude editing assistant).
 // Runs from a local web server on a computer and inside the Android WebView (window.PGVAndroid).
 (function () {
   'use strict';
@@ -193,6 +194,7 @@
     if (tab === 'scenes') renderScenes();
     if (tab === 'prompts') renderPrompts();
     if (tab === 'export') { syncPanels(); setupPreview(); }
+    if (tab === 'local') renderLocal();
   }
   $('nav').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) show(b.dataset.tab); });
   function renderSummary() {
@@ -536,6 +538,72 @@
     } catch (_) { toast(t('open.bad')); }
   });
 
+  // ---- local: run on this computer + Claude assistant ------------------------------------
+  // The assistant lives in the local server (server.js). This page only ever talks to
+  // its own origin; inside the Android app there is no server, so the chat stays off.
+  const served = !android && /^https?:$/.test(location.protocol);
+  const asst = { status: null, busy: false, log: [] }; // log: { role, text, note, bad, undo }
+  async function api(path, body) {
+    const res = await fetch('/api/' + path, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : undefined);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'server');
+    return data;
+  }
+  async function checkLocal() {
+    if (!served) { asst.status = { local: false }; return; }
+    try { asst.status = await api('status'); } catch (_) { asst.status = { local: false }; }
+    if (tab === 'local') renderLocal();
+  }
+  const asstError = (e) => { const m = e && e.message ? e.message : 'server'; const tr = t('asst.err.' + m); return tr === 'asst.err.' + m ? t('asst.err.server') : tr; };
+  function renderLocal() {
+    const st = asst.status;
+    const ready = !!(st && st.assistant);
+    $('local-status').textContent = android ? t('local.apk') : st && st.local ? t('local.on', location.origin) : st ? t('local.file') : '';
+    $('local-cmd').textContent = t('local.cmd');
+    $('asst-state').textContent = !st ? t('asst.checking') : ready ? t('asst.ready', st.model) : t('asst.off');
+    const log = $('asst-log');
+    const items = asst.log.map((m) => h('div', { className: 'msg ' + m.role }, m.text,
+      m.note && h('span', { className: 'note' + (m.bad ? ' bad' : ''), textContent: m.note }),
+      m.undo && h('button', { textContent: t('asst.undo'), on: { click: () => { m.undo = false; travel(hist.undo, hist.redo, 'undo.none'); } } })));
+    if (st && !ready && !asst.log.length) items.push(h('div', { className: 'msg assistant', textContent: t('asst.none') }));
+    log.replaceChildren(...items);
+    log.scrollTop = log.scrollHeight;
+    $('asst-ideas').replaceChildren(...['asst.idea1', 'asst.idea2', 'asst.idea3'].map((k) => h('button', { textContent: t(k), disabled: !ready || asst.busy, on: { click: () => { $('asst-input').value = t(k); $('asst-input').focus(); } } })));
+    $('asst-input').disabled = !ready || asst.busy;
+    $('asst-send').disabled = !ready || asst.busy;
+    $('asst-send').textContent = t(asst.busy ? 'asst.busy' : 'asst.send');
+  }
+  async function askClaude() {
+    const text = $('asst-input').value.trim();
+    if (!text || asst.busy || exporting) return;
+    stopPreview();
+    asst.log.push({ role: 'user', text });
+    asst.busy = true;
+    $('asst-input').value = '';
+    renderLocal();
+    try {
+      const info = {};
+      for (const s of project.scenes) { const m = media.get(s.id); if (m) info[s.id] = { type: m.type, seconds: m.type === 'video' ? m.el.duration : 0 }; }
+      const out = await api('assistant', { project, media: info, messages: asst.log.filter((m) => !m.bad).map((m) => ({ role: m.role, text: m.text })) });
+      // Claude's instructions are applied through the same validated path as any other edit.
+      const r = V.applyOps(project, out.ops, (id) => { const m = media.get(id); return !!m && m.type === 'video'; });
+      const before = hist.last;
+      project = r.project;
+      for (const c of r.copies) await copyMedia(c.from, c.to);
+      saveProject();
+      const changed = hist.last !== before;
+      const note = [changed ? t('asst.applied', r.applied) : out.ops && out.ops.length ? t('asst.nochange') : '', r.skipped.length ? t('asst.skipped', r.skipped.length) : ''].filter(Boolean).join(' ');
+      asst.log.push({ role: 'assistant', text: out.reply || (changed ? t('asst.applied', r.applied) : t('asst.nochange')), note: out.reply ? note : r.skipped.length ? t('asst.skipped', r.skipped.length) : '', undo: changed });
+    } catch (e) {
+      asst.log.push({ role: 'assistant', text: asstError(e), bad: true });
+    }
+    asst.busy = false;
+    renderSummary();
+    if (tab === 'local') renderLocal();
+  }
+  $('asst-send').addEventListener('click', askClaude);
+  $('asst-input').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) askClaude(); });
+
   // ---- start -----------------------------------------------------------------------------
   // Fills every static label, then redraws whatever the current tab built from code.
   function applyLang() {
@@ -562,6 +630,7 @@
   setMusic(null);
   setLogo(null);
   applyLang();
+  checkLocal();
   const selftest = /[?&]selftest=1/.test(location.search);
   idb.open().then(async () => {
     if (selftest) return;

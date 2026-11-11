@@ -4,7 +4,7 @@ App dựng video chạy hoàn toàn trên máy: nhập ý tưởng → storyboar
 
 Giao diện có hai ngôn ngữ: bấm **VI** hoặc **EN** ở góc trên bên phải; lựa chọn được nhớ cho lần mở sau. / The UI is bilingual: tap **VI** or **EN** at the top right.
 
-## Bốn bước trong app
+## Năm tab trong app
 
 | Tab | Việc làm |
 |---|---|
@@ -12,6 +12,7 @@ Giao diện có hai ngôn ngữ: bấm **VI** hoặc **EN** ở góc trên bên 
 | Cảnh | Sửa mô tả, phụ đề, số giây, cỡ cảnh, chuyển động máy, chuyển cảnh. Gắn ảnh hoặc clip cho từng cảnh. |
 | Prompt | Chọn công cụ, sao chép prompt từng cảnh (hoặc cả video). App cảnh báo khi cảnh dài hơn một lần tạo hoặc công cụ không hỗ trợ khung hình. |
 | Xuất | Bàn dựng: xem thử có tiếng, timeline, chỉnh chữ / âm thanh / logo, xuất MP4 (hoặc WebM nếu máy không mã hoá được MP4), lưu phụ đề .srt và dự án .json. |
+| Local | Bảng "Chạy Local" và **trợ lý Claude**: gõ yêu cầu bằng lời thường ("rút cảnh 2 còn 3 giây, tông ấm, chữ ở giữa"), Claude sửa thẳng vào dự án, không ưng thì bấm Hoàn tác. |
 
 ## Công cụ dựng
 
@@ -42,7 +43,7 @@ Giao diện có hai ngôn ngữ: bấm **VI** hoặc **EN** ở góc trên bên 
 | Pika Labs (2.5) | tạo clip | 5 / 10 giây | 7 tỉ lệ | không |
 | Luma Dream Machine (Ray3.2) | tạo clip | 5 / 10 giây | 6 tỉ lệ | không |
 
-Thông số lấy từ trang của hãng và bài tổng hợp; các hãng đổi thường xuyên, mỗi công cụ trong app có link nguồn. Số liệu Runway (độ dài clip), Pika và Sora chỉ có nguồn bên thứ ba. Sửa ở `video/src/core.js` (mảng `TOOLS`).
+Thông số lấy từ trang của hãng và bài tổng hợp; các hãng đổi thường xuyên, mỗi công cụ trong app có link nguồn. Số liệu Runway (độ dài clip), Pika và Sora chỉ có nguồn bên thứ ba. Sửa ở `src/core.js` (mảng `TOOLS`).
 
 ## Chạy trên máy tính
 
@@ -50,7 +51,26 @@ Thông số lấy từ trang của hãng và bài tổng hợp; các hãng đổ
 npm run video          # http://127.0.0.1:4173
 ```
 
-Cần Node.js 18+. Dùng Chrome hoặc Edge.
+Cần Node.js 18+. Dùng Chrome hoặc Edge. Không cần `npm install`: app không có thư viện ngoài.
+
+### Trợ lý Claude (chỉ có khi chạy local)
+
+Server local tự tìm Claude theo thứ tự:
+
+1. Biến môi trường `ANTHROPIC_API_KEY` → gọi Claude API (mặc định `claude-opus-5-5`, đổi bằng `PGV_MODEL`). Có bật sẵn cơ chế tự chuyển model khi yêu cầu bị từ chối (refusal fallback).
+2. Không có khoá → dùng lệnh `claude` (Claude Code) đã đăng nhập trên máy, không tốn tiền API.
+
+```bash
+ANTHROPIC_API_KEY=sk-ant-... npm run video                 # macOS / Linux
+$env:ANTHROPIC_API_KEY="sk-ant-..."; npm run video         # Windows PowerShell
+```
+
+An toàn:
+- Khoá chỉ nằm ở server trên máy, không bao giờ gửi xuống trình duyệt.
+- Server chỉ nghe ở `127.0.0.1` và từ chối yêu cầu đến từ trang web khác.
+- Lệnh Claude trả về đi qua cùng bộ kiểm tra như thao tác tay: chỉ sửa được các trường cho phép, giá trị ngoài ngưỡng bị kẹp lại, tên lạ bị bỏ qua.
+- Claude nhận nội dung dự án (mô tả cảnh, phụ đề, thông số), **không** nhận file ảnh / clip / nhạc.
+- Bản APK không có server nên không có trợ lý; tab Local ở đó chỉ hiện hướng dẫn.
 
 ## Cài trên Android (APK)
 
@@ -61,7 +81,7 @@ Cần Node.js 18+. Dùng Chrome hoặc Edge.
 Tự build: cần JDK 17+ và Android SDK (build-tools + một platform).
 
 ```bash
-ANDROID_HOME=/đường/dẫn/sdk npm run build:apk     # → video/dist/promptgate-video.apk
+ANDROID_HOME=/đường/dẫn/sdk npm run build:apk     # → dist/promptgate-video.apk
 ```
 
 Mặc định ký bằng khoá debug tạo tại chỗ, nên bản build từ máy khác không cài đè lên được (phải gỡ bản cũ). Muốn cập nhật đè: tạo keystore riêng rồi đặt `PGV_KEYSTORE`, `PGV_KS_PASS`, `PGV_KEY_ALIAS` (trên GitHub: secrets `PGV_KEYSTORE_B64`, `PGV_KS_PASS`, `PGV_KEY_ALIAS`).
@@ -78,5 +98,14 @@ Mặc định ký bằng khoá debug tạo tại chỗ, nên bản build từ m�
 ## Test
 
 ```bash
-npm run test:video     # logic, server, đóng gói; có Playwright thì render video thật
+npm test               # logic, server, trợ lý (Claude giả lập), đóng gói; có Playwright thì render video thật
+```
+
+## Repo độc lập
+
+Thư mục này tự đứng được: có `package.json`, test, icon, giấy phép và workflow CI riêng (`.github/workflows/ci.yml`), không dùng file nào bên ngoài. Tách thành repo riêng mà vẫn giữ lịch sử:
+
+```bash
+git subtree split --prefix=video -b video-standalone    # chạy trong repo promptgate
+git push https://github.com/<tài-khoản>/promptgate-video.git video-standalone:main
 ```

@@ -3,15 +3,15 @@
 // Builds the PromptGate Video APK with the plain Android SDK command-line tools (no Gradle):
 //   aapt2 compile/link → javac → d8 → zipalign → apksigner.
 // Needs a JDK (17+) and an Android SDK with build-tools and one platform:
-//   ANDROID_HOME=/path/to/sdk node video/android/build.js
+//   ANDROID_HOME=/path/to/sdk node android/build.js
 // Signing: set PGV_KEYSTORE, PGV_KS_PASS, PGV_KEY_ALIAS to use your own key. Without them a
-// local debug key is created once in video/android/build/ and reused on this machine.
+// local debug key is created once in android/build/ and reused on this machine.
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
 
 const HERE = __dirname;
-const ROOT = path.resolve(HERE, '..', '..');
+const APP = path.resolve(HERE, '..');
 const SRC = path.join(HERE, '..', 'src');
 const OUT = path.join(HERE, 'build');
 const DIST = path.join(HERE, '..', 'dist');
@@ -19,7 +19,7 @@ const WEB_FILES = ['index.html', 'style.css', 'core.js', 'render.js', 'i18n.js',
 const ICONS = { mdpi: 48, hdpi: 72, xhdpi: 96, xxhdpi: 144, xxxhdpi: 192 };
 const MIN_SDK = 24, TARGET_SDK = 34;
 const APP_ID = 'com.promptgate.video';
-const VERSION = { name: '0.2.0', code: 2 };
+const VERSION = { name: '0.3.0', code: 3 };
 const WIN = process.platform === 'win32';
 
 function byVersion(a, b) { return a.localeCompare(b, undefined, { numeric: true }); }
@@ -31,7 +31,7 @@ function stage(outDir) {
   const www = path.join(out, 'stage', 'assets', 'www');
   fs.mkdirSync(www, { recursive: true });
   for (const f of WEB_FILES) fs.copyFileSync(path.join(SRC, f), path.join(www, f));
-  const { png } = require(path.join(ROOT, 'extension', 'src', 'icons.js'));
+  const { png } = require('./icons.js');
   for (const [density, size] of Object.entries(ICONS)) {
     const dir = path.join(out, 'stage', 'res', 'mipmap-' + density);
     fs.mkdirSync(dir, { recursive: true });
@@ -118,7 +118,7 @@ function build(opts) {
   const badging = run(sdk.aapt2, ['dump', 'badging', apk]);
   if (!badging.includes(`package: name='${APP_ID}'`)) throw new Error('APK has the wrong package id:\n' + badging.split('\n')[0]);
   if (/uses-permission/.test(badging)) throw new Error('APK must not request permissions:\n' + badging.split('\n').filter((l) => /uses-permission/.test(l)).join('\n'));
-  log(`OK ${path.relative(ROOT, apk)} (${(fs.statSync(apk).size / 1024).toFixed(0)} KB, ${ks.own ? 'your key' : 'debug key'})`);
+  log(`OK ${path.relative(APP, apk)} (${(fs.statSync(apk).size / 1024).toFixed(0)} KB, ${ks.own ? 'your key' : 'debug key'})`);
   return { apk, verify, badging, ownKey: ks.own };
 }
 

@@ -408,6 +408,90 @@
     project.scenes.splice(index + 1, 0, copy);
     return { project, id: copy.id };
   }
+  // ---- edit operations (used by the Claude assistant) --------------------------------------
+  // Applies a list of edits to a project. Scene numbers are 1-based and refer to the project
+  // as it is when each operation runs. Nothing here is trusted: only whitelisted fields are
+  // copied and normalizeProject clamps every value. isVideo(sceneId) tells split how to trim.
+  // Returns { project, applied, skipped: [{ op, reason }], copies: [{ from, to }] } where
+  // copies lists new scenes that should reuse another scene's media file.
+  const SCENE_FIELDS = ['text', 'caption', 'duration', 'shot', 'motion', 'transition', 'transDur', 'trimIn', 'trimOut', 'speed', 'volume', 'fit', 'look', 'brightness', 'contrast', 'saturation'];
+  const PROJECT_FIELDS = ['title', 'aspect', 'style', 'consistency', 'endFade'];
+  const GROUPS = { caption: ['pos', 'size', 'bg', 'anim', 'color'], music: ['volume', 'fadeIn', 'fadeOut', 'duck'], logo: ['pos', 'size', 'opacity'] };
+  const MAX_OPS = 60;
+  // Fields that only take a fixed set of names. An unknown name is ignored, so a wrong guess
+  // from the assistant leaves the current setting alone instead of resetting it to the default.
+  const NAMED = {
+    scene: { shot: SHOTS, motion: MOTIONS, transition: TRANSITIONS, fit: FITS, look: LOOKS },
+    project: { style: STYLES, aspect: { '9:16': 1, '16:9': 1, '1:1': 1 } },
+    caption: { pos: CAP_POS, size: CAP_SIZE, bg: CAP_BG, anim: CAP_ANIM }, music: {}, logo: { pos: LOGO_POS },
+  };
+  function copyFields(target, source, keys, named) {
+    let n = 0;
+    if (!source || typeof source !== 'object') return n;
+    for (const k of keys) {
+      const v = source[k];
+      if (!Object.prototype.hasOwnProperty.call(source, k) || !['string', 'number', 'boolean'].includes(typeof v)) continue;
+      if (named && named[k] && !Object.prototype.hasOwnProperty.call(named[k], v)) continue;
+      target[k] = v; n++;
+    }
+    return n;
+  }
+  function applyOps(proj, ops, isVideo) {
+    let project = normalizeProject(proj);
+    const skipped = [], copies = [];
+    let applied = 0;
+    const list = Array.isArray(ops) ? ops : [];
+    list.slice(0, MAX_OPS).forEach((raw) => {
+      const o = raw && typeof raw === 'object' ? raw : {};
+      const op = String(o.op || '');
+      const skip = (reason) => skipped.push({ op, reason });
+      const i = Math.round(num(o.scene, 0)) - 1;
+      const has = i >= 0 && i < project.scenes.length;
+      if (op === 'update_project') {
+        const set = o.set && typeof o.set === 'object' ? o.set : {};
+        let n = copyFields(project, set, PROJECT_FIELDS, NAMED.project);
+        // The caption style is called captionStyle on the wire: "caption" there is a scene's text.
+        for (const [g, keys] of Object.entries(GROUPS)) n += copyFields(project[g], g === 'caption' ? set.captionStyle || set.caption : set[g], keys, NAMED[g]);
+        if (!n) return skip('nothing');
+      } else if (op === 'add_scene') {
+        if (project.scenes.length >= LIMITS.scenes) return skip('limit');
+        const scene = { text: '', duration: 4 };
+        copyFields(scene, o.set, SCENE_FIELDS, NAMED.scene);
+        project.scenes.splice(clamp(Math.round(num(o.after, project.scenes.length)), 0, project.scenes.length), 0, scene);
+      } else if (!has) {
+        return skip(['update_scene', 'delete_scene', 'move_scene', 'duplicate_scene', 'split_scene'].includes(op) ? 'scene' : 'unknown');
+      } else if (op === 'update_scene') {
+        const before = JSON.stringify(project.scenes[i]);
+        if (!copyFields(project.scenes[i], o.set, SCENE_FIELDS, NAMED.scene)) return skip('nothing');
+        // Typing a new description refreshes a caption that was just its short form.
+        if (o.set.text != null && o.set.caption == null && JSON.parse(before).caption === caption(JSON.parse(before).text)) project.scenes[i].caption = null;
+      } else if (op === 'delete_scene') {
+        project.scenes.splice(i, 1);
+      } else if (op === 'move_scene') {
+        const to = clamp(Math.round(num(o.to, 0)) - 1, 0, project.scenes.length - 1);
+        if (to === i) return skip('nothing');
+        project.scenes.splice(to, 0, project.scenes.splice(i, 1)[0]);
+      } else if (op === 'duplicate_scene') {
+        const r = duplicateScene(project, i);
+        if (!r) return skip('limit');
+        copies.push({ from: project.scenes[i].id, to: r.id });
+        project = r.project;
+      } else if (op === 'split_scene') {
+        const from = project.scenes[i].id;
+        const r = splitScene(project, i, num(o.at, 0), !!(isVideo && isVideo(from)));
+        if (!r) return skip('split');
+        copies.push({ from, to: r.id });
+        project = r.project;
+      } else return skip('unknown');
+      project = normalizeProject(project);
+      applied++;
+    });
+    if (list.length > MAX_OPS) skipped.push({ op: 'more', reason: 'limit' });
+    // A copy only matters if both ends still exist after later operations.
+    const ids = new Set(project.scenes.map((s) => s.id));
+    return { project, applied, skipped, copies: copies.filter((c) => ids.has(c.to)) };
+  }
+
   // ctx.filter string for a scene: its look plus the three sliders. '' means no filter.
   function filterCss(scene) {
     const parts = [LOOKS[scene.look] ? LOOKS[scene.look].css : ''];
@@ -506,6 +590,7 @@
 
   return {
     CHECKED, LIMITS, ASPECTS, TOOLS, STYLES, SHOTS, MOTIONS, TRANSITIONS, LOOKS, FITS, CAP_POS, CAP_SIZE, CAP_BG, CAP_ANIM, LOGO_POS, SPEEDS, MIMES,
+    applyOps, SCENE_FIELDS, PROJECT_FIELDS, GROUPS, MAX_OPS,
     ease, clipRange, clipTime, clipLength, splitScene, duplicateScene, filterCss, fitRect, logoRect, captionReveal, musicGain, bitrate,
     tool, label, splitBrief, caption, distribute, buildStoryboard, normalizeProject, nearestAspect, fitClip,
     buildPack, packText, totalDuration, timeline, sceneAt, motionTransform, dims, wrapLines, pickMime,
