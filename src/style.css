@@ -68,3 +68,9 @@ nav button { padding: 4px 2px; font-size: 15px; }
 .chat .note { display: block; margin-top: 6px; font-size: 13px; color: var(--ok); }
 .chat .note.bad { color: var(--muted); }
 .chat .msg button { min-height: 32px; padding: 2px 10px; font-size: 13px; margin-top: 6px; }
+ol.steps { list-style: none; padding: 0; margin: 12px 0 0; }
+ol.steps li { display: flex; gap: 8px; align-items: baseline; padding: 4px 0; font-size: 14px; }
+ol.steps li .ic { width: 1.4em; flex: none; text-align: center; }
+ol.steps li.run { color: var(--accent); }
+ol.steps li.warn .detail { color: var(--muted); }
+ol.steps li .detail { display: block; color: var(--muted); font-size: 13px; }

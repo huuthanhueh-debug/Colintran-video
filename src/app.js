@@ -223,6 +223,8 @@
     fillSelect('cap-bg', labelled(V.CAP_BG));
     fillSelect('cap-anim', labelled(V.CAP_ANIM));
     fillSelect('logo-pos', labelled(V.LOGO_POS));
+    fillSelect('ap-aspect', V.ASPECTS.map((a) => [a, t('aspect.' + a)]));
+    fillSelect('ap-style', labelled(V.STYLES));
   }
   fillSelects();
   const briefState = store.get('pgv.brief', {});
@@ -572,6 +574,7 @@
     $('asst-input').disabled = !ready || asst.busy;
     $('asst-send').disabled = !ready || asst.busy;
     $('asst-send').textContent = t(asst.busy ? 'asst.busy' : 'asst.send');
+    renderAutopilot();
   }
   async function askClaude() {
     const text = $('asst-input').value.trim();
@@ -602,6 +605,139 @@
     if (tab === 'local') renderLocal();
   }
   $('asst-send').addEventListener('click', askClaude);
+
+  // ---- autopilot: collect → write → place media → export → save extras ------------------
+  // Each step reports into ap.steps; a failed optional step is shown and skipped, so one bad
+  // link or a Claude error never stops the video from being made.
+  const ap = { files: [], music: null, busy: false, steps: [], result: '' };
+  const STEP_KEYS = ['collect', 'write', 'media', 'export', 'extras'];
+  const ICON = { wait: '○', run: '⏳', ok: '✓', warn: '⚠', skip: '–', fail: '✕' };
+  const apError = (code) => { const tr = t('ap.err.' + code); return tr === 'ap.err.' + code ? asstError(new Error(code)) : tr; };
+  function setStep(key, state, detail) {
+    const s = ap.steps.find((x) => x.key === key);
+    if (s) { s.state = state; if (detail !== undefined) s.detail = detail; }
+    renderAutopilot();
+  }
+  function renderAutopilot() {
+    const ready = !!(asst.status && asst.status.assistant);
+    $('ap-mode').textContent = ready ? t('ap.mode.claude', asst.status.model) : t('ap.mode.offline');
+    const img = ap.files.filter((f) => !/^video\//.test(f.type)).length, vid = ap.files.length - img;
+    $('ap-picked').textContent = ap.files.length || ap.music ? t('ap.picked', img, vid, ap.music ? ap.music.name : '') : '';
+    $('ap-run').disabled = ap.busy || !!exporting;
+    $('ap-run').textContent = t(ap.busy ? 'ap.running' : 'ap.run');
+    $('ap-steps').replaceChildren(...ap.steps.map((s) => h('li', { className: s.state }, h('span', { className: 'ic', textContent: ICON[s.state] }),
+      h('span', null, t('ap.s.' + s.key), s.detail && h('span', { className: 'detail', textContent: s.detail })))));
+    $('ap-result').replaceChildren(...(ap.result ? [ap.result, ' ', h('button', { textContent: t('ap.open'), on: { click: () => show('export') } })] : []));
+  }
+  const MEDIA_RE = /^(image|video)\//;
+  function pickFiles(list) {
+    const files = [...list].filter((f) => MEDIA_RE.test(f.type)).slice(0, 60);
+    ap.files = files.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+    renderAutopilot();
+  }
+  $('ap-files').addEventListener('change', (e) => { pickFiles(e.target.files); e.target.value = ''; });
+  $('ap-folder').addEventListener('change', (e) => { pickFiles(e.target.files); e.target.value = ''; });
+  $('ap-music').addEventListener('change', (e) => { ap.music = e.target.files[0] || null; e.target.value = ''; renderAutopilot(); });
+  function clipSeconds(file) {
+    return new Promise((res) => {
+      const v = h('video', { preload: 'metadata', muted: true });
+      const url = URL.createObjectURL(file);
+      const done = (sec) => { URL.revokeObjectURL(url); res(sec); };
+      v.addEventListener('loadedmetadata', () => done(Number.isFinite(v.duration) ? v.duration : 0), { once: true });
+      v.addEventListener('error', () => done(0), { once: true });
+      setTimeout(() => done(0), 8000);
+      v.src = url;
+    });
+  }
+  async function runAutopilot() {
+    if (ap.busy || exporting) return;
+    const topic = $('ap-topic').value.trim();
+    const urls = $('ap-urls').value.split(/\s+/).map((u) => u.trim()).filter(Boolean);
+    if (!topic && !urls.length) return toast(t('ap.need'));
+    if (project.scenes.length && !selftest && !confirm(t('ap.replace'))) return;
+    stopPreview();
+    ap.busy = true; ap.result = '';
+    ap.steps = STEP_KEYS.map((key) => ({ key, state: 'wait', detail: '' }));
+    const opts = { topic, totalSeconds: Number($('ap-total').value) || 30, aspect: $('ap-aspect').value, style: $('ap-style').value, lang: $('ap-lang').value };
+    let saved = 0;
+    try {
+      // 1. collect
+      let sources = [];
+      if (!urls.length) setStep('collect', 'skip', '');
+      else if (!served) setStep('collect', 'warn', t('ap.d.noServer'));
+      else {
+        setStep('collect', 'run');
+        try {
+          const r = await api('collect', { urls });
+          sources = r.sources || [];
+          const notes = [t('ap.d.collected', sources.length, Math.min(urls.length, 8))].concat((r.failed || []).map((f) => t('ap.d.failed', f.url, apError(f.error))));
+          setStep('collect', sources.length ? (r.failed && r.failed.length ? 'warn' : 'ok') : 'warn', notes.join(' · '));
+        } catch (e) { setStep('collect', 'warn', asstError(e)); }
+      }
+      // 2. write
+      setStep('write', 'run');
+      const media = [];
+      for (const f of ap.files) media.push({ name: f.name, type: /^video\//.test(f.type) ? 'video' : 'image', seconds: /^video\//.test(f.type) ? await clipSeconds(f) : 0 });
+      let next = null, how = '', fellBack = false;
+      if (asst.status && asst.status.assistant) {
+        try {
+          const r = await api('draft', { ...opts, sources, media });
+          const d = V.projectFromDraft(r.draft, { ...opts, names: media.map((m) => m.name) });
+          if (d.project.scenes.length) { next = V.assignMedia(d.project, media, d.preset); how = t('ap.d.claude', d.project.scenes.length, asst.status.model); }
+        } catch (e) { how = t('ap.d.fallback', asstError(e)); fellBack = true; }
+      }
+      if (!next) {
+        next = V.autoStoryboard({ ...opts, sources, media });
+        how = (how ? how + ' · ' : '') + t('ap.d.offline', next.project.scenes.length);
+      }
+      if (!next.project.scenes.length) throw new Error('noDraft');
+      project = V.normalizeProject({ ...next.project, music: project.music, logo: project.logo });
+      setStep('write', fellBack ? 'warn' : 'ok', how);
+      // 3. media
+      setStep('media', 'run');
+      for (const s of project.scenes) {
+        const k = next.map[s.id];
+        if (k === undefined) continue;
+        const f = ap.files[k];
+        if (f && (await attach(s.id, f, f.name))) idb.put(s.id, f, f.name);
+      }
+      if (ap.music) { setMusic(ap.music, ap.music.name); idb.put(MUSIC_KEY, ap.music, ap.music.name); }
+      saveProject();
+      const placed = project.scenes.filter((s) => media.length && next.map[s.id] !== undefined).length;
+      setStep('media', placed ? 'ok' : 'skip', placed ? t('ap.d.media', placed, project.scenes.length) : t('ap.d.noMedia'));
+      // 4. export
+      if (!$('ap-export').checked) setStep('export', 'skip', t('ap.d.skipped'));
+      else {
+        setStep('export', 'run');
+        exporting = { cancelled: false };
+        try {
+          const r = await runExport(selftest ? 360 : $('quality').value);
+          saved++;
+          setStep('export', 'ok', t('export.done', r.width, r.height, (r.blob.size / 1048576).toFixed(1), r.where));
+        } catch (e) { setStep('export', 'fail', why(e)); }
+        exporting = null;
+      }
+      // 5. extras
+      if (!$('ap-extras').checked) setStep('extras', 'skip', t('ap.d.skipped'));
+      else {
+        setStep('extras', 'run');
+        const files = [[V.fileName(project.title, 'srt'), 'application/x-subrip', V.toSRT(project)], [V.fileName(project.title, 'json'), 'application/json', JSON.stringify(project, null, 2)],
+          [V.fileName(project.title, 'txt').replace(/\.txt$/, '-prompts.txt'), 'text/plain', V.allPacks(project, lang)]];
+        const where = [];
+        for (const [name, mime, data] of files) { try { where.push(await saveFile(name, mime, data)); saved++; } catch (e) { where.push(why(e)); } }
+        setStep('extras', 'ok', where.join(' · '));
+      }
+      ap.result = t('ap.done', project.scenes.length, V.fmtTime(V.totalDuration(project)), t('ap.files.saved', saved));
+    } catch (e) {
+      const running = ap.steps.find((s) => s.state === 'run' || s.state === 'wait');
+      if (running) setStep(running.key, 'fail', apError(e && e.message));
+    }
+    ap.busy = false;
+    renderSummary();
+    renderAutopilot();
+    return { saved, scenes: project.scenes.length };
+  }
+  $('ap-run').addEventListener('click', runAutopilot);
   $('asst-input').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) askClaude(); });
 
   // ---- start -----------------------------------------------------------------------------

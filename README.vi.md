@@ -45,7 +45,31 @@ Giao diện có hai ngôn ngữ: bấm **VI** hoặc **EN** ở góc trên bên 
 
 Thông số lấy từ trang của hãng và bài tổng hợp; các hãng đổi thường xuyên, mỗi công cụ trong app có link nguồn. Số liệu Runway (độ dài clip), Pika và Sora chỉ có nguồn bên thứ ba. Sửa ở `src/core.js` (mảng `TOOLS`).
 
-## Chạy trên máy tính
+## Chạy như một app trên máy tính
+
+Cần Node.js 18+ (https://nodejs.org). Không cần `npm install`.
+
+| Cách | Làm gì |
+|---|---|
+| Bấm đúp `PromptGate-Video.cmd` | Windows: chạy app và mở trình duyệt |
+| Bấm đúp `PromptGate-Video.command` | macOS: như trên (lần đầu: chuột phải → Open) |
+| `./promptgate-video.sh` hoặc `npm start` | Linux / terminal |
+
+App đã chạy thì lệnh trên chỉ mở lại cửa sổ; cổng 4173 bận thì tự chọn cổng kế tiếp. Dừng: đóng cửa sổ terminal hoặc Ctrl+C.
+
+## Autopilot: tự làm mọi thứ
+
+Tab **Local → Tự động toàn bộ**: nhập chủ đề, dán link bài viết (tối đa 8), chọn ảnh / clip / cả thư mục và nhạc, bấm **Chạy Autopilot**. App làm 5 bước, bước nào lỗi thì báo và đi tiếp:
+
+1. **Thu thập**: đọc chữ trong các trang (bỏ menu, quảng cáo, script; giới hạn 2 MB và 15 giây mỗi trang).
+2. **Viết kịch bản**: Claude viết từ chủ đề + nguồn + tên file, chỉ dùng thông tin có trong nguồn. Không có Claude hoặc Claude lỗi thì app viết offline bằng cách rút các câu chính.
+3. **Gắn hình**: theo file Claude chọn, hoặc theo chữ trùng giữa tên file và cảnh, còn lại theo thứ tự tên; clip video quyết định độ dài cảnh.
+4. **Xuất video** MP4 / WebM.
+5. **Lưu kèm** phụ đề `.srt`, dự án `.json`, và `-prompts.txt` chứa prompt cho 11 công cụ AI.
+
+Kết quả vào thư mục Tải xuống; một lần Hoàn tác trả lại storyboard cũ. Trên APK, Autopilot vẫn chạy (viết offline, không đọc link).
+
+## Chạy server thủ công
 
 ```bash
 npm run video          # http://127.0.0.1:4173
@@ -61,8 +85,8 @@ Server local tự tìm Claude theo thứ tự:
 2. Không có khoá → dùng lệnh `claude` (Claude Code) đã đăng nhập trên máy, không tốn tiền API.
 
 ```bash
-ANTHROPIC_API_KEY=sk-ant-... npm run video                 # macOS / Linux
-$env:ANTHROPIC_API_KEY="sk-ant-..."; npm run video         # Windows PowerShell
+ANTHROPIC_API_KEY=sk-ant-... npm start                 # macOS / Linux
+$env:ANTHROPIC_API_KEY="sk-ant-..."; npm start         # Windows PowerShell
 ```
 
 An toàn:
