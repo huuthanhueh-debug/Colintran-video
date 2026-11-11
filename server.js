@@ -9,6 +9,7 @@ const fs = require('fs');
 const http = require('http');
 const path = require('path');
 const assistant = require('./assistant.js');
+const collector = require('./collect.js');
 
 const SRC = path.join(__dirname, 'src');
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.png': 'image/png' };
@@ -38,22 +39,28 @@ function readJson(req) {
   });
 }
 
-// opts.env: environment to read credentials from (default process.env). opts.fetch: test hook.
+// opts.env: environment to read credentials from (default process.env). opts.fetch /
+// opts.collectFetch: test hooks for the Claude and web-page requests.
 function createServer(opts) {
   const env = (opts && opts.env) || process.env;
   const fetchImpl = opts && opts.fetch;
+  const collectFetch = opts && opts.collectFetch;
   return http.createServer(async (req, res) => {
     let rel;
     try { rel = decodeURIComponent(new URL(req.url, 'http://x').pathname); } catch (_) { rel = null; }
-    if (rel === '/api/status' || rel === '/api/assistant') {
+    if (/^\/api\/(status|assistant|collect|draft)$/.test(rel || '')) {
       if (!sameSite(req)) return json(res, 403, { error: 'forbidden' });
       try {
         if (rel === '/api/status' && req.method === 'GET') return json(res, 200, await assistant.status(env));
-        if (rel === '/api/assistant' && req.method === 'POST') {
+        if (rel !== '/api/status' && req.method === 'POST') {
           if (!/^application\/json\b/i.test(String(req.headers['content-type'] || ''))) return json(res, 415, { error: 'badRequest' });
           const body = await readJson(req);
           if (!body || typeof body !== 'object') return json(res, 400, { error: 'badRequest' });
-          const out = await assistant.ask(body, env, fetchImpl);
+          if (rel === '/api/collect') {
+            if (!Array.isArray(body.urls) || !body.urls.length) return json(res, 400, { error: 'badRequest' });
+            return json(res, 200, await collector.collect(body.urls, { fetch: collectFetch }));
+          }
+          const out = rel === '/api/draft' ? await assistant.draft(body, env, fetchImpl) : await assistant.ask(body, env, fetchImpl);
           return json(res, out.error ? (out.error === 'noAssistant' ? 503 : out.error === 'badRequest' ? 400 : 502) : 200, out);
         }
       } catch (_) { return json(res, 500, { error: 'server' }); }
@@ -73,14 +80,68 @@ function createServer(opts) {
   });
 }
 
-if (require.main === module) {
-  const port = Number(process.env.PORT) || 4173;
-  const server = createServer();
-  server.on('error', (e) => {
-    console.error(e.code === 'EADDRINUSE' ? `Cổng ${port} đang bận. Thử: PORT=${port + 1} npm run video` : e.message);
-    process.exit(1);
+// ---- desktop launcher ----------------------------------------------------------------------
+// `node server.js --open` (npm start, or the double-click files) starts the app and opens it in
+// the default browser. If the app already runs on that port, it only opens the window; if
+// something else holds the port, it tries the next ones.
+function openCommand(platform, url) {
+  if (platform === 'win32') return ['rundll32', ['url.dll,FileProtocolHandler', url]];
+  if (platform === 'darwin') return ['open', [url]];
+  return ['xdg-open', [url]];
+}
+function openBrowser(url) {
+  if (process.env.PGV_NO_OPEN) return false;
+  const [cmd, args] = openCommand(process.platform, url);
+  try {
+    const child = require('child_process').spawn(cmd, args, { stdio: 'ignore', detached: true, windowsHide: true });
+    child.on('error', () => console.log(`Mở trình duyệt tại / open your browser at: ${url}`));
+    child.unref();
+    return true;
+  } catch (_) { return false; }
+}
+// Is PromptGate Video itself answering on this port?
+function isOurs(port) {
+  return new Promise((resolve) => {
+    const req = http.get({ host: '127.0.0.1', port, path: '/api/status', headers: { host: `127.0.0.1:${port}` }, timeout: 3000 }, (res) => {
+      let body = '';
+      res.on('data', (c) => { body += c; });
+      res.on('end', () => { try { resolve(JSON.parse(body).local === true); } catch (_) { resolve(false); } });
+    });
+    req.on('error', () => resolve(false));
+    req.on('timeout', () => { req.destroy(); resolve(false); });
   });
-  server.listen(port, '127.0.0.1', () => console.log(`PromptGate Video: http://127.0.0.1:${port}  (Ctrl+C để dừng)`));
+}
+// Resolves { server, port, reused } — reused: the app was already running there.
+function start(opts) {
+  const o = opts || {};
+  const base = o.port || 4173, tries = o.tries || 10;
+  return new Promise((resolve, reject) => {
+    const attempt = (port) => {
+      const server = createServer(o);
+      server.once('error', async (e) => {
+        if (e.code !== 'EADDRINUSE') return reject(e);
+        if (await isOurs(port)) return resolve({ server: null, port, reused: true });
+        if (port + 1 < base + tries) return attempt(port + 1);
+        reject(e);
+      });
+      server.listen(port, '127.0.0.1', () => resolve({ server, port, reused: false }));
+    };
+    attempt(base);
+  });
 }
 
-module.exports = { createServer, SRC };
+if (require.main === module) {
+  const open = process.argv.includes('--open');
+  start({ port: Number(process.env.PORT) || 4173, tries: open ? 10 : 1 }).then(({ port, reused }) => {
+    const url = `http://127.0.0.1:${port}/`;
+    if (reused) console.log(`PromptGate Video đã chạy sẵn / already running: ${url}`);
+    else console.log(`PromptGate Video: ${url}  (Ctrl+C để dừng / to stop)`);
+    if (open) openBrowser(url);
+    if (reused) process.exit(0);
+  }, (e) => {
+    console.error(e.code === 'EADDRINUSE' ? `Cổng ${Number(process.env.PORT) || 4173} đang bận. Thử: npm start (tự chọn cổng khác) hoặc PORT=5000 npm run video` : e.message);
+    process.exit(1);
+  });
+}
+
+module.exports = { createServer, start, isOurs, openCommand, SRC };

@@ -492,6 +492,118 @@
     return { project, applied, skipped, copies: copies.filter((c) => ids.has(c.to)) };
   }
 
+  // ---- autopilot: storyboard from collected material ---------------------------------------
+  const STOP = new Set(('the a an and or but of to in on for with is are was were be been being it its this that these those as at by from into about over after before than then so such not no can will would should could may might has have had do does did you your we our they their he she his her them us i me my also just more most very there here which who what when where how all any some each other only own same too out up down off again further once both few many much '
+    + 'và là của có cho với các những một được trong khi này đó để từ thì mà như ở trên theo về đã sẽ đang rất cũng nhiều không ra vào lại nên nếu hay hoặc vì bị sau trước tại năm ngày người chúng tôi bạn họ nó ông bà anh chị em đến cùng vẫn còn đây đấy nào gì sự việc').split(/\s+/));
+  const fold = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase();
+  const tokens = (s) => (String(s || '').toLowerCase().match(/[\p{L}\p{N}]+/gu) || []).filter((w) => w.length > 1 && !STOP.has(w));
+  // The n sentences that carry most of the text's recurring words, in their original order.
+  // Plain extractive summary: no network, no model, so autopilot also works offline.
+  function keySentences(text, n) {
+    const seen = new Set();
+    const sents = splitBrief(text).filter((x) => { const w = words(x), k = fold(x); if (w < 5 || w > 45 || seen.has(k)) return false; seen.add(k); return true; });
+    if (sents.length <= n) return sents;
+    const freq = new Map();
+    for (const x of sents) for (const w of new Set(tokens(x))) freq.set(w, (freq.get(w) || 0) + 1);
+    const scored = sents.map((x, i) => {
+      const tk = tokens(x);
+      const sum = tk.reduce((a, w) => a + (freq.get(w) > 1 ? freq.get(w) : 0), 0);
+      return { i, score: sum / Math.sqrt(Math.max(1, tk.length)) + (i < 3 ? 1.5 - i * 0.5 : 0) };
+    });
+    return scored.sort((a, b) => b.score - a.score || a.i - b.i).slice(0, n).sort((a, b) => a.i - b.i).map((x) => sents[x.i]);
+  }
+  const naturalSort = (list) => list.slice().sort((a, b) => String(a.name).localeCompare(String(b.name), undefined, { numeric: true, sensitivity: 'base' }));
+  // media: [{ name, type: 'image' | 'video', seconds }]. preset: { sceneIndex: mediaIndex } from
+  // the writer. Returns { project, map: { sceneId: mediaIndex } }:
+  //   1. preset picks, 2. a file whose name shares a word with the scene, 3. the rest in name
+  //   order, 4. with fewer files than scenes, files are reused in turn.
+  // A scene that gets a video clip takes the clip's length (capped at 12 s).
+  function assignMedia(proj, media, preset) {
+    const project = normalizeProject(proj);
+    const list = (Array.isArray(media) ? media : []).map((m, index) => ({ index, name: String(m && m.name || ''), type: m && m.type === 'video' ? 'video' : 'image', seconds: num(m && m.seconds, 0) }));
+    const map = {};
+    if (!list.length) return { project, map };
+    const used = new Set();
+    const take = (s, m) => { map[s.id] = m.index; used.add(m.index); };
+    project.scenes.forEach((s, i) => {
+      const k = preset && Object.prototype.hasOwnProperty.call(preset, i) ? Math.round(num(preset[i], -1)) : -1;
+      if (k >= 0 && k < list.length && !used.has(k)) take(s, list[k]);
+    });
+    // Crude singular form so "beaches" in a scene matches "beach.jpg".
+    const stems = (str) => new Set(tokens(fold(str)).map((w) => (w.length > 3 ? w.replace(/(es|s)$/, '') : w)));
+    const nameWords = list.map((m) => stems(m.name.replace(/\.[^.]+$/, '')));
+    project.scenes.forEach((s) => {
+      if (s.id in map) return;
+      const want = stems(s.text + ' ' + s.caption);
+      let best = -1, bestHits = 0;
+      list.forEach((m, j) => {
+        if (used.has(j)) return;
+        let hits = 0;
+        for (const w of nameWords[j]) if (want.has(w)) hits++;
+        if (hits > bestHits) { best = j; bestHits = hits; }
+      });
+      if (best >= 0) take(s, list[best]);
+    });
+    const order = naturalSort(list);
+    let next = 0;
+    project.scenes.forEach((s) => {
+      if (s.id in map) return;
+      const free = order.find((m) => !used.has(m.index));
+      if (free) take(s, free); else { map[s.id] = order[next % order.length].index; next++; }
+    });
+    for (const s of project.scenes) {
+      const m = list[map[s.id]];
+      if (m && m.type === 'video' && m.seconds > 0) s.duration = clamp(tenth(Math.min(m.seconds, 12)), LIMITS.sceneMin, LIMITS.sceneMax);
+    }
+    return { project: normalizeProject(project), map };
+  }
+  // Offline writer. o: { topic, sources: [{ title, text }], media, totalSeconds, aspect, style }.
+  function autoStoryboard(o) {
+    o = o || {};
+    const topic = clean(o.topic).slice(0, 300);
+    const sources = (Array.isArray(o.sources) ? o.sources : []).filter((x) => x && clean(x.text));
+    const total = clamp(num(o.totalSeconds, 30), 4, LIMITS.total);
+    const nMedia = Array.isArray(o.media) ? o.media.length : 0;
+    let n = clamp(Math.round(total / 4), 3, 12);
+    if (nMedia > n) n = Math.min(nMedia, 12, Math.floor(total / 2));
+    const corpus = sources.map((x) => clean(x.text)).join('\n');
+    let parts = keySentences(corpus || topic, topic && corpus ? n - 1 : n);
+    if (topic && corpus) parts = [topic].concat(parts);
+    if (!parts.length && topic) parts = [topic];
+    const title = topic || clean(sources[0] && sources[0].title) || caption(parts[0] || 'Video');
+    const board = buildStoryboard({ brief: parts.join('\n'), totalSeconds: total, aspect: o.aspect, style: o.style, title: title.slice(0, 80), maxScenes: Math.max(n, parts.length) });
+    return assignMedia(board, o.media);
+  }
+  // Turns a writer's draft (Claude's storyboard, untrusted) into a project. Only known fields
+  // are kept and every value goes through normalizeProject. names: the user's media file names;
+  // a scene's "media" must be one of them. Returns { project, preset } for assignMedia.
+  function projectFromDraft(draft, opts) {
+    const d = draft && typeof draft === 'object' ? draft : {};
+    const o = opts || {};
+    const names = (Array.isArray(o.names) ? o.names : []).map(String);
+    const preset = {};
+    const scenes = (Array.isArray(d.scenes) ? d.scenes : []).slice(0, LIMITS.scenes).map((x, i) => {
+      const s = {};
+      copyFields(s, x, ['text', 'caption', 'duration', 'shot', 'motion', 'transition', 'transDur', 'look', 'fit'], NAMED.scene);
+      const k = x && typeof x.media === 'string' ? names.indexOf(x.media) : -1;
+      if (k >= 0) preset[i] = k;
+      return s;
+    }).filter((s) => clean(s.text) || clean(s.caption));
+    const cap = {};
+    copyFields(cap, d.captionStyle, GROUPS.caption, NAMED.caption);
+    const project = normalizeProject({
+      title: clean(d.title) || clean(o.topic), aspect: o.aspect,
+      style: d.style && STYLES[d.style] && Object.prototype.hasOwnProperty.call(STYLES, d.style) ? d.style : o.style,
+      consistency: d.consistency, caption: cap, scenes,
+    });
+    for (const s of project.scenes) if (!s.text) s.text = s.caption;
+    return { project, preset };
+  }
+  // Every tool's prompts in one text file.
+  function allPacks(project, lang) {
+    return TOOLS.map((t) => { const p = buildPack(t.id, project, lang); return `==== ${t.name}${t.version ? ' · ' + t.version : ''} ====\n` + (p.warnings.length ? p.warnings.map((w) => '! ' + w).join('\n') + '\n\n' : '') + packText(p); }).join('\n\n\n') + '\n';
+  }
+
   // ctx.filter string for a scene: its look plus the three sliders. '' means no filter.
   function filterCss(scene) {
     const parts = [LOOKS[scene.look] ? LOOKS[scene.look].css : ''];
@@ -590,6 +702,7 @@
 
   return {
     CHECKED, LIMITS, ASPECTS, TOOLS, STYLES, SHOTS, MOTIONS, TRANSITIONS, LOOKS, FITS, CAP_POS, CAP_SIZE, CAP_BG, CAP_ANIM, LOGO_POS, SPEEDS, MIMES,
+    keySentences, assignMedia, autoStoryboard, projectFromDraft, allPacks, fold,
     applyOps, SCENE_FIELDS, PROJECT_FIELDS, GROUPS, MAX_OPS,
     ease, clipRange, clipTime, clipLength, splitScene, duplicateScene, filterCss, fitRect, logoRect, captionReveal, musicGain, bitrate,
     tool, label, splitBrief, caption, distribute, buildStoryboard, normalizeProject, nearestAspect, fitClip,

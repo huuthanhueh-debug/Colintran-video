@@ -124,6 +124,32 @@
     <p class="muted small" data-t="export.note"></p>
   </section>
   <section id="tab-local" class="tab" hidden>
+    <div class="card" id="ap-card">
+      <h3><span data-t="ap.title"></span><span id="ap-mode" class="tag"></span></h3>
+      <p class="small muted" data-t="ap.hint"></p>
+      <label for="ap-topic" data-t="ap.topic"></label>
+      <textarea id="ap-topic" rows="2" maxlength="1000" data-ph="ap.topic.ph"></textarea>
+      <label for="ap-urls"><span data-t="ap.urls"></span> <span class="muted" data-t="ap.urls.hint"></span></label>
+      <textarea id="ap-urls" rows="3" data-ph="ap.urls.ph"></textarea>
+      <label data-t="ap.media"></label>
+      <div class="row tight">
+        <label class="filebtn"><span data-t="ap.files"></span><input id="ap-files" type="file" multiple accept="image/*,video/*" hidden></label>
+        <label class="filebtn"><span data-t="ap.folder"></span><input id="ap-folder" type="file" webkitdirectory multiple hidden></label>
+        <label class="filebtn"><span data-t="ap.music"></span><input id="ap-music" type="file" accept="audio/*" hidden></label>
+      </div>
+      <p id="ap-picked" class="small media"></p>
+      <div class="row">
+        <div><label for="ap-total" data-t="total"></label><input id="ap-total" type="number" min="4" max="600" step="1" value="30"></div>
+        <div><label for="ap-aspect" data-t="aspect"></label><select id="ap-aspect"></select></div>
+        <div><label for="ap-style" data-t="style"></label><select id="ap-style"></select></div>
+        <div><label for="ap-lang" data-t="ap.lang"></label><select id="ap-lang"><option value="vi">Tiếng Việt</option><option value="en">English</option></select></div>
+      </div>
+      <label class="check"><input id="ap-export" type="checkbox" checked> <span data-t="ap.doExport"></span></label>
+      <label class="check"><input id="ap-extras" type="checkbox" checked> <span data-t="ap.doExtras"></span></label>
+      <button id="ap-run" class="primary" data-t="ap.run"></button>
+      <ol id="ap-steps" class="steps"></ol>
+      <p id="ap-result" class="small"></p>
+    </div>
     <div class="card">
       <h3 data-t="local.title"></h3>
       <p id="local-status" class="small"></p>

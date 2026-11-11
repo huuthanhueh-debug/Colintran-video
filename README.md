@@ -7,10 +7,17 @@ Offline video studio. Brief → storyboard → prompts shaped for 11 AI video to
 ## Run
 
 ```bash
-npm run video        # http://127.0.0.1:4173, Node.js 18+, no npm install needed
+npm start            # starts the app and opens it in your browser (Node.js 18+, no npm install)
+npm run video        # server only, http://127.0.0.1:4173
 npm test             # logic, server, assistant (mock Claude), packaging; real renders when Playwright is installed
 ANDROID_HOME=/path/to/sdk npm run build:apk   # → dist/promptgate-video.apk (JDK 17+)
 ```
+
+Or double-click `PromptGate-Video.cmd` (Windows), `PromptGate-Video.command` (macOS) or run `./promptgate-video.sh`. If the app is already running the launcher just reopens it; a busy port moves to the next one.
+
+## Autopilot
+
+Local tab → **Do it all**: a topic, up to 8 article links, your images / clips / a whole folder and music. One click collects the pages' text, writes the script (Claude when available, grounded in the sources; an offline extractive writer otherwise), places the media, exports the video and saves `.srt`, `.json` and a prompts file for all 11 tools. A failing step is reported and skipped. On the APK it runs offline (no links, no Claude).
 
 ## Editing
 
@@ -30,7 +37,7 @@ The key stays on the computer. The server listens on `127.0.0.1` only and refuse
 | Path | What |
 |---|---|
 | `src/` | The web app (also bundled into the APK): `core.js` logic, `render.js` compositor and audio, `app.js` UI, `i18n.js` strings |
-| `server.js`, `assistant.js` | Zero-dependency local server and the Claude bridge |
+| `server.js`, `assistant.js`, `collect.js` | Zero-dependency local server and launcher, the Claude bridge (edits and storyboard writing), the web-page collector |
 | `android/` | WebView activity, manifest (no permissions), `build.js` (aapt2 → javac → d8 → zipalign → apksigner) |
 | `tests/video.js` | All tests |
 | `.github/workflows/ci.yml` | Tests, APK build, emulator run, release (active when this folder is the repository root) |
